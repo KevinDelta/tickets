@@ -67,6 +67,12 @@ curl --fail-with-body \
   http://localhost:3000/integration/v1/listings/tourbook-integration
 ```
 
+Discover every active listing through the same authenticated boundary with
+`GET /integration/v1/listings`. Each item reports its stable slug, name,
+capacity, booked quantity, and current available quantity. This route remains
+available when the isolated fixture service is intentionally not activated as a
+public Chobble site.
+
 Create one exact-quantity booking with a caller-scoped Idempotency Key:
 
 ```sh

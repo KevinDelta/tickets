@@ -110,6 +110,21 @@ describeWithEnv(
   () => {
     test("reads deterministic product-level availability", async () => {
       expect((await resetFixture()).status).toBe(200);
+      expect(
+        await (
+          await kernelRequest(integrationRequest("/integration/v1/listings"))
+        ).json(),
+      ).toEqual({
+        listings: [
+          {
+            availableQuantity: 12,
+            bookedQuantity: 0,
+            capacity: 12,
+            name: "Tourbook integration fixture",
+            slug: "tourbook-integration",
+          },
+        ],
+      });
       expect(await listingEvidence()).toEqual({
         availableQuantity: 12,
         bookedQuantity: 0,
