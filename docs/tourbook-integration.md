@@ -10,11 +10,11 @@ tree.
 - Fork repository: `https://github.com/KevinDelta/tickets`
 - Upstream release: `v2026-08-18-095849`
 - Upstream commit: `9573132df08172981609ebee55e3f23c804fbe6e`
-- Fork image source commit: `9d13cfcf269eeb0a50baea95a7a1578cbd35b3f1`
+- Fork image source commit: `49907829f45ba30d00e7e293b3fab3501b44e7b4`
 - Published OCI index digest:
-  `sha256:73cc27e6dcff42f3dc2cfb12be60bfa011193a4d0a0dbae6ee13c1434b0137d2`
+  `sha256:55bca9e51b79bd356cfb4aef8f471f159997f5ae0ff73095f27c67341df9c297`
 - Immutable image:
-  `ghcr.io/kevindelta/tickets@sha256:73cc27e6dcff42f3dc2cfb12be60bfa011193a4d0a0dbae6ee13c1434b0137d2`
+  `ghcr.io/kevindelta/tickets@sha256:55bca9e51b79bd356cfb4aef8f471f159997f5ae0ff73095f27c67341df9c297`
 - Container base: `denoland/deno:alpine-2.5.6`
 - Container-base manifest digest:
   `sha256:b9c7668c78fe393893f00b0fc8ba3d0f2e1bbb8f891a79a963b3b713ab110767`
