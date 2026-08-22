@@ -3,8 +3,18 @@ import { expect } from "@std/expect";
 import { it as test } from "@std/testing/bdd";
 import { handleRequest } from "#routes";
 import { handleIntegrationBookingRequest } from "#routes/integration-bookings.ts";
-import { countRows, execute, queryOne } from "#shared/db/client.ts";
+import {
+  BOOKING_SCOPE,
+  operationByKeyInTransaction,
+} from "#routes/integration-operations.ts";
+import {
+  countRows,
+  execute,
+  queryOne,
+  withTransaction,
+} from "#shared/db/client.ts";
 import { describeWithEnv } from "#test-utils/db.ts";
+import { withDbFault } from "#test-utils/db-fault.ts";
 import { mockRequest } from "#test-utils/mocks.ts";
 
 // jscpd:ignore-end
@@ -59,6 +69,27 @@ const bookingRequest = (
 
 const createBooking = (key: string, quantity: number): Promise<Response> =>
   kernelRequest(bookingRequest(key, quantity));
+
+const cancellationRequest = (
+  bookingId: string,
+  key: string,
+  quantity: number,
+): Request =>
+  integrationRequest(`/integration/v1/bookings/${bookingId}/cancellations`, {
+    body: JSON.stringify({ quantity }),
+    headers: {
+      "content-type": "application/json",
+      "idempotency-key": key,
+    },
+    method: "POST",
+  });
+
+const cancelBooking = (
+  bookingId: string,
+  key: string,
+  quantity: number,
+): Promise<Response> =>
+  handleRequest(cancellationRequest(bookingId, key, quantity));
 
 const listingEvidence = async (): Promise<Record<string, unknown>> => {
   const response = await kernelRequest(integrationRequest(LISTING_PATH));
@@ -204,6 +235,10 @@ describeWithEnv(
           "SELECT quantity, scope FROM integration_operations",
         ),
       ).toEqual({ quantity: 3, scope: "integration:booking:create" });
+      const stored = await withTransaction((tx) =>
+        operationByKeyInTransaction(tx, BOOKING_SCOPE, "booking-success"),
+      );
+      expect(stored?.idempotency_key).toBe("booking-success");
     });
 
     test("returns the original result for an identical replay", async () => {
@@ -300,7 +335,15 @@ describeWithEnv(
       );
       expect(bookingResult.status).toBe(200);
       const bookingPayload = await bookingResult.json();
-      expect(bookingPayload).toEqual({ booking });
+      expect(bookingPayload).toEqual({
+        booking: {
+          ...booking,
+          cancelledQuantity: 0,
+          issuedQuantity: 2,
+          remainingQuantity: 2,
+          status: "active",
+        },
+      });
 
       const ticketResult = await handleRequest(
         integrationRequest(`/integration/v1/tickets/${booking.ticketId}`),
@@ -309,10 +352,14 @@ describeWithEnv(
       expect(await ticketResult.json()).toEqual({
         ticket: {
           bookingId: booking.id,
+          cancelledQuantity: 0,
           id: booking.ticketId,
+          issuedQuantity: 2,
           listingSlug: "tourbook-integration",
           quantity: 2,
           renderUrl: booking.ticketUrl,
+          status: "active",
+          valid: true,
         },
       });
       expect(JSON.stringify(bookingPayload)).not.toContain(
@@ -353,6 +400,244 @@ describeWithEnv(
       expect(response.status).toBe(404);
       expect(await response.json()).toEqual({ error: "not_found" });
       expect(await countRows("attendees")).toBe(0);
+    });
+
+    test("partially cancels an exact quantity and updates every read", async () => {
+      expect((await resetFixture()).status).toBe(200);
+      const created = await createBooking("booking-partial-cancel", 3);
+      const { booking } = await created.json();
+      const response = await cancelBooking(
+        booking.id,
+        "cancellation-partial",
+        2,
+      );
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        cancellation: {
+          affectedQuantity: 2,
+          bookingId: booking.id,
+          cancelledQuantity: 2,
+          issuedQuantity: 3,
+          remainingQuantity: 1,
+          status: "partially_cancelled",
+        },
+      });
+      expect(await listingEvidence()).toMatchObject({
+        availableQuantity: 11,
+        bookedQuantity: 1,
+      });
+      expect(
+        await queryOne<{ scope: string }>(
+          "SELECT scope FROM integration_operations WHERE idempotency_key = ?",
+          ["cancellation-partial"],
+        ),
+      ).toEqual({ scope: "integration:booking:cancel" });
+
+      const bookingRead = await handleRequest(
+        integrationRequest(`/integration/v1/bookings/${booking.id}`),
+      );
+      expect(await bookingRead.json()).toMatchObject({
+        booking: {
+          cancelledQuantity: 2,
+          issuedQuantity: 3,
+          remainingQuantity: 1,
+          status: "partially_cancelled",
+        },
+      });
+      const ticketRead = await handleRequest(
+        integrationRequest(`/integration/v1/tickets/${booking.ticketId}`),
+      );
+      expect(await ticketRead.json()).toMatchObject({
+        ticket: {
+          cancelledQuantity: 2,
+          quantity: 1,
+          status: "partially_cancelled",
+          valid: true,
+        },
+      });
+      const cancellationRead = await handleRequest(
+        integrationRequest(
+          `/integration/v1/bookings/${booking.id}/cancellations`,
+        ),
+      );
+      expect(await cancellationRead.json()).toEqual({
+        cancellation: {
+          bookingId: booking.id,
+          cancelledQuantity: 2,
+          issuedQuantity: 3,
+          remainingQuantity: 1,
+          status: "partially_cancelled",
+        },
+      });
+    });
+
+    test("composes partial cancellations into a fully revoked ticket", async () => {
+      expect((await resetFixture()).status).toBe(200);
+      const { booking } = await (
+        await createBooking("booking-full-cancel", 5)
+      ).json();
+      expect(
+        (await cancelBooking(booking.id, "cancellation-first", 2)).status,
+      ).toBe(200);
+      const final = await cancelBooking(booking.id, "cancellation-final", 3);
+      expect(final.status).toBe(200);
+      expect(await final.json()).toEqual({
+        cancellation: {
+          affectedQuantity: 3,
+          bookingId: booking.id,
+          cancelledQuantity: 5,
+          issuedQuantity: 5,
+          remainingQuantity: 0,
+          status: "cancelled",
+        },
+      });
+      expect(await listingEvidence()).toMatchObject({
+        availableQuantity: 12,
+        bookedQuantity: 0,
+      });
+      const ticket = await handleRequest(
+        integrationRequest(`/integration/v1/tickets/${booking.ticketId}`),
+      );
+      expect(await ticket.json()).toMatchObject({
+        ticket: { quantity: 0, status: "cancelled", valid: false },
+      });
+    });
+
+    test("replays one cancellation and conflicts on changed input", async () => {
+      expect((await resetFixture()).status).toBe(200);
+      const { booking } = await (
+        await createBooking("booking-cancel-replay", 4)
+      ).json();
+      const first = await cancelBooking(booking.id, "cancellation-replay", 2);
+      const original = await first.json();
+      const replay = await cancelBooking(booking.id, "cancellation-replay", 2);
+      expect(replay.status).toBe(200);
+      expect(await replay.json()).toEqual(original);
+      const conflict = await cancelBooking(
+        booking.id,
+        "cancellation-replay",
+        1,
+      );
+      expect(conflict.status).toBe(409);
+      expect(await conflict.json()).toEqual({ error: "idempotency_conflict" });
+      expect(await countRows("integration_operations")).toBe(2);
+      expect(await listingEvidence()).toMatchObject({ bookedQuantity: 2 });
+    });
+
+    test("serializes concurrent identical cancellation retries", async () => {
+      expect((await resetFixture()).status).toBe(200);
+      const { booking } = await (
+        await createBooking("booking-cancel-concurrent", 4)
+      ).json();
+      const responses = await Promise.all([
+        cancelBooking(booking.id, "cancellation-concurrent", 2),
+        cancelBooking(booking.id, "cancellation-concurrent", 2),
+      ]);
+      expect(responses.map(({ status }) => status)).toEqual([200, 200]);
+      const outcomes = await Promise.all(
+        responses.map((response) => response.json()),
+      );
+      expect(outcomes[1]).toEqual(outcomes[0]);
+      expect(await listingEvidence()).toMatchObject({ bookedQuantity: 2 });
+    });
+
+    test("durably rejects over-cancellation without revoking tickets", async () => {
+      expect((await resetFixture()).status).toBe(200);
+      const { booking } = await (
+        await createBooking("booking-over-cancel", 2)
+      ).json();
+      const response = await cancelBooking(
+        booking.id,
+        "cancellation-too-large",
+        3,
+      );
+      expect(response.status).toBe(409);
+      expect(await response.json()).toEqual({
+        cancellation: {
+          affectedQuantity: 0,
+          bookingId: booking.id,
+          cancelledQuantity: 0,
+          issuedQuantity: 2,
+          remainingQuantity: 2,
+          status: "active",
+        },
+        error: "cancellation_exceeds_remaining_quantity",
+      });
+      expect(
+        (await cancelBooking(booking.id, "cancellation-too-large", 3)).status,
+      ).toBe(409);
+      const conflict = await cancelBooking(
+        booking.id,
+        "cancellation-too-large",
+        2,
+      );
+      expect(conflict.status).toBe(409);
+      expect(await conflict.json()).toEqual({ error: "idempotency_conflict" });
+      expect(await listingEvidence()).toMatchObject({ bookedQuantity: 2 });
+    });
+
+    test("rolls back when the exact cancellation update is refused", async () => {
+      expect((await resetFixture()).status).toBe(200);
+      const { booking } = await (
+        await createBooking("booking-cancel-update-fault", 2)
+      ).json();
+      await withDbFault(
+        `CREATE TRIGGER test_cancellation_update_fault
+          BEFORE UPDATE OF quantity ON listing_attendees
+          BEGIN
+            SELECT RAISE(IGNORE);
+          END`,
+        "test_cancellation_update_fault",
+        async () => {
+          await expect(
+            cancelBooking(booking.id, "cancellation-update-fault", 1),
+          ).rejects.toThrow();
+        },
+      );
+      expect(await listingEvidence()).toMatchObject({ bookedQuantity: 2 });
+      expect(await countRows("integration_operations")).toBe(1);
+    });
+
+    test("validates cancellation input and clears its state on reset", async () => {
+      expect((await resetFixture()).status).toBe(200);
+      const { booking } = await (
+        await createBooking("booking-cancel-reset", 2)
+      ).json();
+      expect(
+        (await handleRequest(cancellationRequest(booking.id, "", 1))).status,
+      ).toBe(400);
+      expect(
+        (
+          await handleRequest(
+            cancellationRequest(booking.id, "cancellation-zero", 0),
+          )
+        ).status,
+      ).toBe(400);
+      const missing = await cancelBooking("999999", "cancellation-missing", 1);
+      expect(missing.status).toBe(404);
+      expect(await missing.json()).toEqual({ error: "booking_not_found" });
+      expect(
+        (await cancelBooking(booking.id, "cancellation-before-reset", 1))
+          .status,
+      ).toBe(200);
+      expect((await resetFixture()).status).toBe(200);
+      const status = await handleRequest(
+        integrationRequest(
+          `/integration/v1/bookings/${booking.id}/cancellations`,
+        ),
+      );
+      expect(status.status).toBe(404);
+      expect(await status.json()).toEqual({ error: "booking_not_found" });
+      expect(await countRows("integration_operations")).toBe(0);
+    });
+
+    test("does not expose payment-refund authority", async () => {
+      expect((await resetFixture()).status).toBe(200);
+      const response = await handleRequest(
+        integrationRequest("/integration/v1/refunds", { method: "POST" }),
+      );
+      expect(response.status).toBe(404);
+      expect(await response.json()).toEqual({ error: "not_found" });
     });
   },
 );

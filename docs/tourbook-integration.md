@@ -11,7 +11,7 @@ tree.
 - Upstream release: `v2026-08-18-095849`
 - Upstream commit: `9573132df08172981609ebee55e3f23c804fbe6e`
 - Container base: `denoland/deno:alpine-2.5.6`
-- Container manifest digest:
+- Container-base manifest digest:
   `sha256:b9c7668c78fe393893f00b0fc8ba3d0f2e1bbb8f891a79a963b3b713ab110767`
 
 The upstream project is licensed under the GNU Affero General Public License.
@@ -86,6 +86,33 @@ These responses contain stable booking and ticket evidence but no attendee PII.
 Chobble retains the encrypted attendee details and owns ticket rendering at the
 returned `/t/:ticketId` URL.
 
+Cancel an exact remaining quantity from a booking:
+
+```sh
+curl --fail-with-body \
+  --request POST \
+  --header "Authorization: Bearer ${TOURBOOK_INTEGRATION_KEY}" \
+  --header "Content-Type: application/json" \
+  --header "Idempotency-Key: tourbook-cancellation-123" \
+  --data '{"quantity":1}' \
+  http://localhost:3000/integration/v1/bookings/123/cancellations
+```
+
+The response reports the exact `affectedQuantity`, cumulative
+`cancelledQuantity`, and `remainingQuantity`. Sequential cancellations can
+reduce a booking to zero but cannot make it negative. An over-cancellation is
+stored as a durable `409` outcome. Identical retries return the original result;
+reusing the key for a different booking or quantity returns an idempotency
+conflict.
+
+Read current cancellation state with
+`GET /integration/v1/bookings/:id/cancellations`. Booking and ticket reads also
+report issued, cancelled, and remaining quantities. A fully cancelled ticket has
+`valid: false`; a partially cancelled ticket remains valid for exactly its
+remaining quantity. These routes revoke Chobble ticket validity only. The
+integration boundary intentionally exposes no refund endpoint, refund status, or
+payment-refund authority.
+
 ## Build and verify
 
 The bake definition builds both supported Linux platforms from the pinned Deno
@@ -94,6 +121,13 @@ manifest:
 ```sh
 docker buildx bake integration
 ```
+
+Every push to the pinned `tourbook-v2026-08-18-095849` branch publishes one
+immutable, commit-tagged multi-architecture image to
+`ghcr.io/kevindelta/tickets`. The workflow records the source commit, OCI
+manifest digest, and digest-qualified image reference in its job summary. Pull
+and deploy by digest, never by the convenience commit tag. Feature branches and
+pull requests build both architectures without publishing them.
 
 Run the behavior test with the repository harness:
 

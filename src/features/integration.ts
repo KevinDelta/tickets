@@ -140,8 +140,17 @@ export const handleIntegrationRequest = async (
   const { handleIntegrationBookingRequest } = await import(
     "#routes/integration-bookings.ts"
   );
+  const bookingResponse = await handleIntegrationBookingRequest(
+    request,
+    path,
+    method,
+  );
+  if (bookingResponse !== null) return bookingResponse;
+  const { handleIntegrationCancellationRequest } = await import(
+    "#routes/integration-cancellations.ts"
+  );
   return (
-    (await handleIntegrationBookingRequest(request, path, method)) ??
+    (await handleIntegrationCancellationRequest(request, path, method)) ??
     apiErrorResponse("not_found", 404)
   );
 };
