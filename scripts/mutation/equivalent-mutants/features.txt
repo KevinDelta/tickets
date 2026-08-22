@@ -36,6 +36,11 @@ src/features/admin/attendee-page-data.ts::assembleTemplateData.hasMixedTimings~1
 src/features/admin/attendee-page-data.ts::assembleTemplateData.selectedAnswerIds~1og9d80  ?? → ||   # selectedAnswerIds is an array when present, and arrays are always truthy
 src/features/tickets/token-utils.ts::verifyTokensWithRealLine.verified.realBookings~1jqkiac  ?? → ||   # (attendees[i]?.bookings ?? []): ListingAttendeeRow[]|undefined — an array is always truthy, undefined→[] either way
 
+# Tourbook integration boundary: an impossible-state diagnostic and a nullish
+# response fallback whose present value is always a Response object.
+src/features/integration-bookings.ts::committedResponse~0c2zxhj Committed integration operation is missing→""   # committedResponse runs only after the operation insert completed; changing the diagnostic text cannot affect any reachable response or database state
+src/features/integration.ts::handleIntegrationRequest~1oln37u  ?? → ||   # handleIntegrationBookingRequest returns Response|null; Response objects are truthy and null selects the not-found fallback under either operator
+
 # Ticket form parsing (ticket-form.ts): `?? → ||` where the operand is an array,
 # an object, a Map.get number (only falsy-non-null is 0, 0??0===0||0), or a
 # string that is never the empty string — so the two operators always agree.
