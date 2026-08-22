@@ -27,17 +27,31 @@ const resetFixture = (): Promise<Response> =>
 
 const expectFixtureState = async (): Promise<void> => {
   const listings = await getAllListings();
-  expect(listings).toHaveLength(1);
-  expect(listings[0]).toMatchObject({
-    active: true,
-    attendee_count: 0,
-    date: "",
-    max_attendees: 12,
-    max_price: 0,
-    name: "Tourbook integration fixture",
-    slug: "tourbook-integration",
-    tickets_count: 0,
-  });
+  expect(listings).toHaveLength(2);
+  expect(listings).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        active: true,
+        attendee_count: 0,
+        date: "",
+        max_attendees: 12,
+        max_price: 0,
+        name: "Tourbook integration fixture",
+        slug: "tourbook-integration",
+        tickets_count: 0,
+      }),
+      expect.objectContaining({
+        active: true,
+        attendee_count: 0,
+        date: "",
+        max_attendees: 8,
+        max_price: 0,
+        name: "Tourbook soft-channel fixture",
+        slug: "tourbook-soft-channel",
+        tickets_count: 0,
+      }),
+    ]),
+  );
   expect(
     await queryOne<{ count: number }>(
       "SELECT COUNT(*) AS count FROM attendees",
@@ -125,11 +139,14 @@ describeWithEnv(
       expect(await response.json()).toEqual({ status: "ready" });
     });
 
-    test("resets to one deterministic date-less listing", async () => {
+    test("resets to two deterministic date-less listings", async () => {
       const response = await resetFixture();
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({
-        listing: { capacity: 12, slug: "tourbook-integration" },
+        listings: [
+          { capacity: 12, slug: "tourbook-integration" },
+          { capacity: 8, slug: "tourbook-soft-channel" },
+        ],
         status: "reset",
       });
       await expectFixtureState();

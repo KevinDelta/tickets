@@ -10,8 +10,18 @@ import { constantTimeEqual } from "#shared/crypto/utils.ts";
 /* jscpd:ignore-end */
 
 const INTEGRATION_PREFIX = "/integration/";
-const FIXTURE_CAPACITY = 12;
-const FIXTURE_SLUG = "tourbook-integration";
+const FIXTURE_LISTINGS = [
+  {
+    capacity: 12,
+    name: "Tourbook integration fixture",
+    slug: "tourbook-integration",
+  },
+  {
+    capacity: 8,
+    name: "Tourbook soft-channel fixture",
+    slug: "tourbook-soft-channel",
+  },
+] as const;
 const KeySchema = v.pipe(
   v.string(),
   v.minLength(
@@ -78,15 +88,17 @@ const resetFixture = async (): Promise<void> => {
     await getFixturePublicKey(),
   );
   await execute(publicKey.sql, publicKey.args);
-  await listingsTable.insert({
-    active: true,
-    maxAttendees: FIXTURE_CAPACITY,
-    maxPrice: 0,
-    maxQuantity: FIXTURE_CAPACITY,
-    name: "Tourbook integration fixture",
-    slug: FIXTURE_SLUG,
-    slugIndex: await computeSlugIndex(FIXTURE_SLUG),
-  });
+  for (const listing of FIXTURE_LISTINGS) {
+    await listingsTable.insert({
+      active: true,
+      maxAttendees: listing.capacity,
+      maxPrice: 0,
+      maxQuantity: listing.capacity,
+      name: listing.name,
+      slug: listing.slug,
+      slugIndex: await computeSlugIndex(listing.slug),
+    });
+  }
 };
 
 const [getResetQueue, setResetQueue] = lazyRef<Promise<void>>(() =>
@@ -109,7 +121,10 @@ const resetResponse = async (): Promise<Response> => {
   if (!fixtureModeEnabled()) return apiErrorResponse("not_found", 404);
   await queueFixtureReset();
   return jsonResponse({
-    listing: { capacity: FIXTURE_CAPACITY, slug: FIXTURE_SLUG },
+    listings: FIXTURE_LISTINGS.map(({ capacity, slug }) => ({
+      capacity,
+      slug,
+    })),
     status: "reset",
   });
 };
