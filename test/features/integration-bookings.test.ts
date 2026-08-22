@@ -1,3 +1,4 @@
+// test-groups: run-alone
 // jscpd:ignore-start
 import { expect } from "@std/expect";
 import { it as test } from "@std/testing/bdd";
