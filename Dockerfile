@@ -9,7 +9,12 @@ COPY scripts/ scripts/
 RUN deno install && deno task build:static
 
 FROM ${DENO_IMAGE}
+ARG SOURCE_COMMIT=unknown
 WORKDIR /app
+
+LABEL org.opencontainers.image.licenses="AGPL-3.0-or-later" \
+      org.opencontainers.image.revision="${SOURCE_COMMIT}" \
+      org.opencontainers.image.source="https://github.com/KevinDelta/tickets"
 
 # Create non-root user for running the application
 RUN addgroup -S tickets && adduser -S tickets -G tickets \
