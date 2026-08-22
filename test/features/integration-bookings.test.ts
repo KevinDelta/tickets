@@ -192,13 +192,15 @@ describeWithEnv(
 
       expect((await createBooking("x", 1)).status).toBe(201);
 
-      for (const request of [
-        bookingRequest("booking-empty-name", 1, {
-          email: "traveller@example.com",
-          name: "",
-        }),
-        bookingRequest("booking-zero-quantity", 0),
-      ]) {
+      for (
+        const request of [
+          bookingRequest("booking-empty-name", 1, {
+            email: "traveller@example.com",
+            name: "",
+          }),
+          bookingRequest("booking-zero-quantity", 0),
+        ]
+      ) {
         const invalidBody = await kernelRequest(request);
         expect(invalidBody.status).toBe(400);
         expect(await invalidBody.json()).toEqual({ error: "invalid_request" });
@@ -279,7 +281,7 @@ describeWithEnv(
         ),
       ).toEqual({ quantity: 3, scope: "integration:booking:create" });
       const stored = await withTransaction((tx) =>
-        operationByKeyInTransaction(tx, BOOKING_SCOPE, "booking-success"),
+        operationByKeyInTransaction(tx, BOOKING_SCOPE, "booking-success")
       );
       expect(stored?.idempotency_key).toBe("booking-success");
     });
@@ -317,7 +319,8 @@ describeWithEnv(
         createBooking("booking-capacity-race-b", 7),
       ]);
       expect(responses.map(({ status }) => status).toSorted()).toEqual([
-        201, 409,
+        201,
+        409,
       ]);
       const payloads = await Promise.all(
         responses.map((response) => response.json()),
