@@ -81,8 +81,10 @@ jobs:
         run: >-
           deno task mutation
           --source src/features/integration.ts
+          --source src/features/integration-bookings.ts
           --source src/features/app/request.ts
           --test test/features/integration.test.ts
+          --test test/features/integration-bookings.test.ts
           --test test/features/app/request.test.ts
           --test 'test/features/app/request/**/*.test.ts'
           --harness

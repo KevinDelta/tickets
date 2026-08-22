@@ -21,6 +21,11 @@ const KeySchema = v.pipe(
 );
 const FixtureModeSchema = v.picklist(["false", "true"]);
 
+const [getFixturePublicKey] = lazyRef<Promise<string>>(async () => {
+  const { generateKeyPair } = await import("#shared/crypto/keys.ts");
+  return (await generateKeyPair()).publicKey;
+});
+
 const integrationKey = (): string | undefined => {
   const value = Deno.env.get("TOURBOOK_INTEGRATION_KEY");
   return value === undefined ? undefined : v.parse(KeySchema, value);
@@ -50,15 +55,29 @@ const authorizationError = (
 };
 
 const resetFixture = async (): Promise<void> => {
-  const [{ listingsTable }, { computeSlugIndex }, migrations] =
-    await Promise.all([
-      import("#shared/db/listings/records.ts"),
-      import("#shared/db/listings/table.ts"),
-      import("#shared/db/migrations.ts"),
-    ]);
+  const [
+    { listingsTable },
+    { computeSlugIndex },
+    migrations,
+    { execute },
+    { settingUpsert },
+    { CONFIG_KEYS },
+  ] = await Promise.all([
+    import("#shared/db/listings/records.ts"),
+    import("#shared/db/listings/table.ts"),
+    import("#shared/db/migrations.ts"),
+    import("#shared/db/client.ts"),
+    import("#shared/db/settings/raw-writes.ts"),
+    import("#shared/settings/keys.ts"),
+  ]);
   const { rebuildWipedSchema, resetDatabase } = migrations;
   await resetDatabase();
   await rebuildWipedSchema();
+  const publicKey = settingUpsert(
+    CONFIG_KEYS.PUBLIC_KEY,
+    await getFixturePublicKey(),
+  );
+  await execute(publicKey.sql, publicKey.args);
   await listingsTable.insert({
     active: true,
     maxAttendees: FIXTURE_CAPACITY,
@@ -110,14 +129,19 @@ export const handleIntegrationRequest = async (
   const authError = authorizationError(request, key);
   if (authError) return authError;
 
-  const isHealth = method === "GET" && path === "/integration/v1/health";
-  const isReset = method === "POST" && path === "/integration/v1/fixture/reset";
-  if (!isHealth && !isReset) return apiErrorResponse("not_found", 404);
-
-  if (isHealth) {
+  if (method === "GET" && path === "/integration/v1/health") {
     const { initDb } = await import("#shared/db/migrations.ts");
     await initDb({ allowMissingSettings: true });
     return jsonResponse({ status: "ready" });
   }
-  return await resetResponse();
+  if (method === "POST" && path === "/integration/v1/fixture/reset") {
+    return await resetResponse();
+  }
+  const { handleIntegrationBookingRequest } = await import(
+    "#routes/integration-bookings.ts"
+  );
+  return (
+    (await handleIntegrationBookingRequest(request, path, method)) ??
+    apiErrorResponse("not_found", 404)
+  );
 };

@@ -54,6 +54,38 @@ curl --fail-with-body \
 The responses contain fixture metadata only. They do not contain attendee
 personal data.
 
+Read the fixture listing and its current product-level availability:
+
+```sh
+curl --fail-with-body \
+  --header "Authorization: Bearer ${TOURBOOK_INTEGRATION_KEY}" \
+  http://localhost:3000/integration/v1/listings/tourbook-integration
+```
+
+Create one exact-quantity booking with a caller-scoped Idempotency Key:
+
+```sh
+curl --fail-with-body \
+  --request POST \
+  --header "Authorization: Bearer ${TOURBOOK_INTEGRATION_KEY}" \
+  --header "Content-Type: application/json" \
+  --header "Idempotency-Key: tourbook-booking-123" \
+  --data '{"attendee":{"email":"traveller@example.com","name":"Traveller"},"listingSlug":"tourbook-integration","quantity":2}' \
+  http://localhost:3000/integration/v1/bookings
+```
+
+The mutation stores its scope, Idempotency Key, SHA-256 material-request
+fingerprint, and original outcome in the same transaction as a successful
+booking. An identical replay returns that outcome without consuming capacity;
+different material input with the same key returns `409`. Insufficient capacity
+also returns `409` and is never silently reduced to the remaining capacity.
+
+The returned booking `id` and `ticketId` can be retrieved from
+`GET /integration/v1/bookings/:id` and `GET /integration/v1/tickets/:ticketId`.
+These responses contain stable booking and ticket evidence but no attendee PII.
+Chobble retains the encrypted attendee details and owns ticket rendering at the
+returned `/t/:ticketId` URL.
+
 ## Build and verify
 
 The bake definition builds both supported Linux platforms from the pinned Deno
@@ -66,7 +98,8 @@ docker buildx bake integration
 Run the behavior test with the repository harness:
 
 ```sh
-deno task test:files test/features/integration.test.ts
+deno task test:files test/features/integration.test.ts \
+  test/features/integration-bookings.test.ts
 ```
 
 Run all required repository checks before a pull request:
