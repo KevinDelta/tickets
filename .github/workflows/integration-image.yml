@@ -11,6 +11,7 @@ on:
       - Dockerfile
       - scripts/**
       - src/**
+      - test/**
 
 jobs:
   checks:
