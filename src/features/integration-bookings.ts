@@ -22,7 +22,10 @@ import { jsonResponse } from "#routes/response.ts";
 import { generateTicketToken } from "#shared/crypto/utils.ts";
 import { createAttendeeAtomicImpl } from "#shared/db/attendees/create.ts";
 import { execute } from "#shared/db/client.ts";
-import { getListingWithCountBySlug } from "#shared/db/listings/records.ts";
+import {
+  getAllListings,
+  getListingWithCountBySlug,
+} from "#shared/db/listings/records.ts";
 import { settings } from "#shared/db/settings.ts";
 import { CONFIG_KEYS } from "#shared/settings/keys.ts";
 
@@ -95,6 +98,20 @@ const availableQuantity = (listing: {
       listing.max_attendees - listing.attendee_count,
     ),
   );
+
+const listingEvidence = (listing: {
+  attendee_count: number;
+  max_attendees: number;
+  max_quantity: number;
+  name: string;
+  slug: string;
+}) => ({
+  availableQuantity: availableQuantity(listing),
+  bookedQuantity: listing.attendee_count,
+  capacity: listing.max_attendees,
+  name: listing.name,
+  slug: listing.slug,
+});
 
 const activeListing = async (slug: string) => {
   const candidate = await getListingWithCountBySlug(slug);
@@ -193,15 +210,15 @@ const listingResponse = async (slug: string): Promise<Response> => {
   if (listing === null) {
     return apiErrorResponse("listing_not_found", 404);
   }
-  return jsonResponse({
-    listing: {
-      availableQuantity: availableQuantity(listing),
-      bookedQuantity: listing.attendee_count,
-      capacity: listing.max_attendees,
-      name: listing.name,
-      slug: listing.slug,
-    },
-  });
+  return jsonResponse({ listing: listingEvidence(listing) });
+};
+
+const listingsResponse = async (): Promise<Response> => {
+  const listings = (await getAllListings())
+    .filter(({ active }) => active)
+    .map(listingEvidence)
+    .sort((left, right) => left.slug.localeCompare(right.slug));
+  return jsonResponse({ listings });
 };
 
 /** Handle a recognized booking-kernel route, or return null for an unknown path. */
@@ -212,6 +229,9 @@ export async function handleIntegrationBookingRequest(
 ): Promise<Response | null> {
   if (method === "POST" && path === "/integration/v1/bookings") {
     return await handleBookingCreate(request);
+  }
+  if (method === "GET" && path === "/integration/v1/listings") {
+    return await listingsResponse();
   }
   const listing = path.match(/^\/integration\/v1\/listings\/([^/]+)$/);
   if (method === "GET" && listing) {

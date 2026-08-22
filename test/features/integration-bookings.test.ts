@@ -13,8 +13,11 @@ import {
   queryOne,
   withTransaction,
 } from "#shared/db/client.ts";
+import { listingsTable } from "#shared/db/listings/records.ts";
+import { computeSlugIndex } from "#shared/db/listings/table.ts";
 import { describeWithEnv } from "#test-utils/db.ts";
 import { withDbFault } from "#test-utils/db-fault.ts";
+import { testListingInput } from "#test-utils/factories.ts";
 import { mockRequest } from "#test-utils/mocks.ts";
 
 // jscpd:ignore-end
@@ -110,6 +113,42 @@ describeWithEnv(
   () => {
     test("reads deterministic product-level availability", async () => {
       expect((await resetFixture()).status).toBe(200);
+      await listingsTable.insert({
+        ...testListingInput({
+          maxAttendees: 7,
+          maxQuantity: 7,
+          name: "Alpha integration",
+        }),
+        slug: "alpha-integration",
+        slugIndex: await computeSlugIndex("alpha-integration"),
+      });
+      await listingsTable.insert({
+        ...testListingInput({ active: false, name: "Hidden integration" }),
+        slug: "hidden-integration",
+        slugIndex: await computeSlugIndex("hidden-integration"),
+      });
+      expect(
+        await (
+          await kernelRequest(integrationRequest("/integration/v1/listings"))
+        ).json(),
+      ).toEqual({
+        listings: [
+          {
+            availableQuantity: 7,
+            bookedQuantity: 0,
+            capacity: 7,
+            name: "Alpha integration",
+            slug: "alpha-integration",
+          },
+          {
+            availableQuantity: 12,
+            bookedQuantity: 0,
+            capacity: 12,
+            name: "Tourbook integration fixture",
+            slug: "tourbook-integration",
+          },
+        ],
+      });
       expect(await listingEvidence()).toEqual({
         availableQuantity: 12,
         bookedQuantity: 0,
