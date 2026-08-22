@@ -14,6 +14,7 @@ import {
   withTransaction,
 } from "#shared/db/client.ts";
 import { describeWithEnv } from "#test-utils/db.ts";
+import { withDbFault } from "#test-utils/db-fault.ts";
 import { mockRequest } from "#test-utils/mocks.ts";
 
 // jscpd:ignore-end
@@ -573,6 +574,28 @@ describeWithEnv(
       expect(conflict.status).toBe(409);
       expect(await conflict.json()).toEqual({ error: "idempotency_conflict" });
       expect(await listingEvidence()).toMatchObject({ bookedQuantity: 2 });
+    });
+
+    test("rolls back when the exact cancellation update is refused", async () => {
+      expect((await resetFixture()).status).toBe(200);
+      const { booking } = await (
+        await createBooking("booking-cancel-update-fault", 2)
+      ).json();
+      await withDbFault(
+        `CREATE TRIGGER test_cancellation_update_fault
+          BEFORE UPDATE OF quantity ON listing_attendees
+          BEGIN
+            SELECT RAISE(IGNORE);
+          END`,
+        "test_cancellation_update_fault",
+        async () => {
+          await expect(
+            cancelBooking(booking.id, "cancellation-update-fault", 1),
+          ).rejects.toThrow();
+        },
+      );
+      expect(await listingEvidence()).toMatchObject({ bookedQuantity: 2 });
+      expect(await countRows("integration_operations")).toBe(1);
     });
 
     test("validates cancellation input and clears its state on reset", async () => {

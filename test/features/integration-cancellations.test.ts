@@ -12,3 +12,14 @@ test("leaves non-cancellation integration routes unhandled", async () => {
   );
   expect(response).toBeNull();
 });
+
+test("leaves unsupported methods on cancellation routes unhandled", async () => {
+  const response = await handleIntegrationCancellationRequest(
+    mockRequest("/integration/v1/bookings/1/cancellations", {
+      method: "DELETE",
+    }),
+    "/integration/v1/bookings/1/cancellations",
+    "DELETE",
+  );
+  expect(response).toBeNull();
+});
