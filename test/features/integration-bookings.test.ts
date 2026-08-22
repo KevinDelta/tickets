@@ -147,6 +147,13 @@ describeWithEnv(
             name: "Tourbook integration fixture",
             slug: "tourbook-integration",
           },
+          {
+            availableQuantity: 8,
+            bookedQuantity: 0,
+            capacity: 8,
+            name: "Tourbook soft-channel fixture",
+            slug: "tourbook-soft-channel",
+          },
         ],
       });
       expect(await listingEvidence()).toEqual({

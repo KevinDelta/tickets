@@ -34,10 +34,12 @@ credential. Rotate the value and restart the container to revoke access.
 
 Set `TOURBOOK_INTEGRATION_FIXTURE=true` only on the isolated test service. The
 reset route returns `404` in every other environment. A reset erases the service
-database and creates one active, date-less listing named
-`Tourbook integration fixture` with slug `tourbook-integration` and capacity
-`12`. It leaves no bookings or attendee records. Repeated or concurrent reset
-requests converge to the same state.
+database and creates two active, date-less listings. The booking fixture is
+`tourbook-integration` with capacity `12`; the soft-channel fixture is
+`tourbook-soft-channel` with capacity `8`. The second product lets Tourbook
+demonstrate soft channel controls without inventing occurrence data or weakening
+hard-Allotment delegation rules. The reset leaves no bookings or attendee
+records. Repeated or concurrent reset requests converge to the same state.
 
 Check database readiness:
 
