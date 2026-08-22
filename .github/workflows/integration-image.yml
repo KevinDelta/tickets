@@ -1,0 +1,111 @@
+name: Tourbook integration
+
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - .github/workflows/integration-image.yml
+      - deno.json
+      - deno.lock
+      - docker-bake.hcl
+      - Dockerfile
+      - scripts/**
+      - src/**
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Deno
+        uses: ./.github/actions/setup-deno
+
+      - name: Lint
+        run: deno task lint:ci
+
+      - name: Typecheck
+        run: deno task typecheck
+
+      - name: Check for code duplication
+        run: deno task cpd
+
+      - name: Check user-facing copy
+        run: deno task check:copy
+
+      - name: Build edge bundle
+        run: deno task build:edge
+
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Deno
+        uses: ./.github/actions/setup-deno
+
+      - name: Cache stripe-mock
+        uses: actions/cache@v4
+        with:
+          path: .bin
+          key: stripe-mock-0.188.0-linux-amd64
+
+      - name: Test with coverage
+        env:
+          DB_ENCRYPTION_KEY: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+        run: deno task test:coverage
+
+  mutation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Deno
+        uses: ./.github/actions/setup-deno
+
+      - name: Cache stripe-mock
+        uses: actions/cache@v4
+        with:
+          path: .bin
+          key: stripe-mock-0.188.0-linux-amd64
+
+      - name: Mutation-test the integration boundary
+        env:
+          DB_ENCRYPTION_KEY: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+        run: >-
+          deno task mutation
+          --source src/features/integration.ts
+          --source src/features/app/request.ts
+          --test test/features/integration.test.ts
+          --test test/features/app/request.test.ts
+          --test 'test/features/app/request/**/*.test.ts'
+          --harness
+          --jobs 4
+
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build amd64 and arm64 image
+        uses: docker/bake-action@v6
+        with:
+          files: docker-bake.hcl
+          push: false
+          targets: integration
