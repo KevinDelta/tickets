@@ -5,6 +5,41 @@ import type { Table } from "./types.ts";
 
 export const attendeeTables: [name: string, table: Table][] = [
   [
+    "integration_operations",
+    {
+      columns: [
+        ["scope", "TEXT NOT NULL"],
+        ["idempotency_key", "TEXT NOT NULL"],
+        ["request_fingerprint", "TEXT NOT NULL"],
+        ["status_code", "INTEGER NOT NULL"],
+        ["outcome_json", "TEXT NOT NULL"],
+        ["booking_id", "INTEGER"],
+        ["ticket_id", "TEXT"],
+        ["listing_slug", "TEXT NOT NULL"],
+        ["quantity", "INTEGER NOT NULL"],
+        ["created_at", "TEXT NOT NULL"],
+      ],
+      indexes: [
+        {
+          columns: ["scope", "idempotency_key"],
+          name: "idx_integration_operations_idempotency",
+          unique: true,
+        },
+        {
+          columns: ["booking_id"],
+          name: "idx_integration_operations_booking",
+          unique: true,
+        },
+        {
+          columns: ["ticket_id"],
+          name: "idx_integration_operations_ticket",
+          unique: true,
+        },
+      ],
+    },
+  ],
+
+  [
     "attendee_statuses",
     {
       columns: [

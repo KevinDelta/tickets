@@ -12,6 +12,10 @@ import { once } from "#fp";
 import { withMessageGroups } from "#i18n";
 import { SETUP_MESSAGE_GROUPS } from "#locales/groups.ts";
 import {
+  handleIntegrationRequest,
+  isIntegrationPath,
+} from "#routes/integration.ts";
+import {
   applySecurityHeaders,
   contentTypeRejectionResponse,
   isEmbeddablePath,
@@ -252,6 +256,15 @@ const processRequest = async (
     if (staticResponse) {
       return finish(
         await applySecurityHeaders(staticResponse, isEmbeddablePath(path)),
+      );
+    }
+
+    if (isIntegrationPath(path)) {
+      return finish(
+        await applySecurityHeaders(
+          await handleIntegrationRequest(bufferedRequest, path, method),
+          isEmbeddablePath(path),
+        ),
       );
     }
 

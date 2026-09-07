@@ -36,6 +36,12 @@ src/features/admin/attendee-page-data.ts::assembleTemplateData.hasMixedTimings~1
 src/features/admin/attendee-page-data.ts::assembleTemplateData.selectedAnswerIds~1og9d80  ?? → ||   # selectedAnswerIds is an array when present, and arrays are always truthy
 src/features/tickets/token-utils.ts::verifyTokensWithRealLine.verified.realBookings~1jqkiac  ?? → ||   # (attendees[i]?.bookings ?? []): ListingAttendeeRow[]|undefined — an array is always truthy, undefined→[] either way
 
+# Tourbook integration boundary: a nullish response fallback whose present
+# value is always a Response object.
+src/features/integration.ts::handleIntegrationRequest~0926tt4  ?? → ||   # handleIntegrationCancellationRequest returns Response|null; Response objects are truthy and null selects the not-found fallback under either operator
+src/features/integration-cancellations.ts::bookingStateInTransaction~0dqwwd8  ?? → ||   # resultRows()[0] is a row object or undefined; row objects are truthy and undefined selects null under either operator
+src/features/integration-operations.ts::operationByKeyInTransaction~18czg4y  ?? → ||   # resultRows()[0] is likewise a truthy operation object or undefined, so both operators return the same operation-or-null value
+
 # Ticket form parsing (ticket-form.ts): `?? → ||` where the operand is an array,
 # an object, a Map.get number (only falsy-non-null is 0, 0??0===0||0), or a
 # string that is never the empty string — so the two operators always agree.
