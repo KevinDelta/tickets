@@ -78,6 +78,7 @@ export const coreTables: [name: string, table: Table][] = [
         ["maximum_days_after", "INTEGER NOT NULL DEFAULT 90"],
         ["date", "TEXT NOT NULL DEFAULT ''"],
         ["location", "TEXT NOT NULL DEFAULT ''"],
+        ["kernel_location", "TEXT"],
         ["attachment_url", "TEXT NOT NULL DEFAULT ''"],
         ["attachment_name", "TEXT NOT NULL DEFAULT ''"],
         ["non_transferable", "INTEGER NOT NULL DEFAULT 0"],

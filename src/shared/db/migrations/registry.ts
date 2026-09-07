@@ -415,6 +415,10 @@ export const MIGRATION_REGISTRY: MigrationRegistryEntry[] = [
     "2026-08-18_sumup_recovery_state",
     () => import("./2026-08-18_sumup_recovery_state.ts"),
   ),
+  entry(
+    "2026-09-06_kernel_location",
+    () => import("./2026-09-06_kernel_location.ts"),
+  ),
 ];
 /* jscpd:ignore-end */
 

@@ -41,6 +41,7 @@ export const API_EXAMPLE_LISTING: ListingWithCount = {
   image_url: "",
   income: 7500,
   initial_site_months: 0,
+  kernel_location: null,
   listing_type: "standard",
   location: "Village Hall",
   max_attendees: 20,

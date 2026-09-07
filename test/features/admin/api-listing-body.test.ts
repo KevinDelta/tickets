@@ -69,6 +69,38 @@ describeWithEnv("Admin API - Listings", { db: true }, () => {
       });
     });
 
+    test("stamps valid Kernel locations and rejects client provenance", async () => {
+      const located = await bodyToCreateInput({
+        kernel_location: { latitude: 57.14774, longitude: -2.096323 },
+        max_attendees: 10,
+        name: "Located",
+      });
+      expect(located.ok).toBe(true);
+      if (located.ok) {
+        expect(located.value.kernelLocation).toMatchObject({
+          latitude: 57.14774,
+          longitude: -2.096323,
+        });
+        expect(located.value.kernelLocation?.updatedAt).toMatch(
+          /^\d{4}-\d{2}-\d{2}T/,
+        );
+      }
+
+      const forged = await bodyToCreateInput({
+        kernel_location: {
+          latitude: 57.14774,
+          longitude: -2.096323,
+          updatedAt: "2000-01-01T00:00:00.000Z",
+        },
+        max_attendees: 10,
+        name: "Forged",
+      });
+      expect(forged).toEqual({
+        error: "kernel_location must contain only latitude and longitude",
+        ok: false,
+      });
+    });
+
     test("handles all field types correctly", async () => {
       const result = await bodyToCreateInput({
         active: false,

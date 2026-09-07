@@ -137,6 +137,7 @@ describeWithEnv(
             availableQuantity: 7,
             bookedQuantity: 0,
             capacity: 7,
+            location: null,
             name: "Alpha integration",
             slug: "alpha-integration",
           },
@@ -144,6 +145,7 @@ describeWithEnv(
             availableQuantity: 12,
             bookedQuantity: 0,
             capacity: 12,
+            location: null,
             name: "Tourbook integration fixture",
             slug: "tourbook-integration",
           },
@@ -151,6 +153,7 @@ describeWithEnv(
             availableQuantity: 8,
             bookedQuantity: 0,
             capacity: 8,
+            location: null,
             name: "Tourbook soft-channel fixture",
             slug: "tourbook-soft-channel",
           },
@@ -160,8 +163,44 @@ describeWithEnv(
         availableQuantity: 12,
         bookedQuantity: 0,
         capacity: 12,
+        location: null,
         name: "Tourbook integration fixture",
         slug: "tourbook-integration",
+      });
+    });
+
+    test("publishes only Kernel-authored WGS84 evidence", async () => {
+      expect((await resetFixture()).status).toBe(200);
+      await listingsTable.insert({
+        ...testListingInput({
+          kernelLocation: {
+            latitude: 57.14774,
+            longitude: -2.096323,
+            updatedAt: "2026-09-06T12:00:00.000Z",
+          },
+          name: "Located integration",
+        }),
+        slug: "located-integration",
+        slugIndex: await computeSlugIndex("located-integration"),
+      });
+
+      const response = await kernelRequest(
+        integrationRequest("/integration/v1/listings/located-integration"),
+      );
+      expect(await response.json()).toEqual({
+        listing: {
+          availableQuantity: 1,
+          bookedQuantity: 0,
+          capacity: 100,
+          location: {
+            latitude: 57.14774,
+            longitude: -2.096323,
+            source: "ticketing_kernel",
+            updatedAt: "2026-09-06T12:00:00.000Z",
+          },
+          name: "Located integration",
+          slug: "located-integration",
+        },
       });
     });
 
@@ -195,13 +234,15 @@ describeWithEnv(
 
       expect((await createBooking("x", 1)).status).toBe(201);
 
-      for (const request of [
-        bookingRequest("booking-empty-name", 1, {
-          email: "traveller@example.com",
-          name: "",
-        }),
-        bookingRequest("booking-zero-quantity", 0),
-      ]) {
+      for (
+        const request of [
+          bookingRequest("booking-empty-name", 1, {
+            email: "traveller@example.com",
+            name: "",
+          }),
+          bookingRequest("booking-zero-quantity", 0),
+        ]
+      ) {
         const invalidBody = await kernelRequest(request);
         expect(invalidBody.status).toBe(400);
         expect(await invalidBody.json()).toEqual({ error: "invalid_request" });
@@ -282,7 +323,7 @@ describeWithEnv(
         ),
       ).toEqual({ quantity: 3, scope: "integration:booking:create" });
       const stored = await withTransaction((tx) =>
-        operationByKeyInTransaction(tx, BOOKING_SCOPE, "booking-success"),
+        operationByKeyInTransaction(tx, BOOKING_SCOPE, "booking-success")
       );
       expect(stored?.idempotency_key).toBe("booking-success");
     });
@@ -320,7 +361,8 @@ describeWithEnv(
         createBooking("booking-capacity-race-b", 7),
       ]);
       expect(responses.map(({ status }) => status).toSorted()).toEqual([
-        201, 409,
+        201,
+        409,
       ]);
       const payloads = await Promise.all(
         responses.map((response) => response.json()),
