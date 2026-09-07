@@ -1,14 +1,14 @@
 import { expect } from "@std/expect";
 import { describe, it as test } from "@std/testing/bdd";
-import { MIGRATION_IDS } from "#shared/db/migrations/registry.ts";
+import { MIGRATION_IDS } from "#db/migrations/registry.ts";
 import {
   DB_SCHEMA_HASH_KEY,
   LATEST_DB_UPDATE_KEY,
   LATEST_UPDATE,
   MIGRATION_LOCK_KEY,
   SCHEMA_MIGRATIONS_TABLE,
-} from "#shared/db/migrations/schema/version.ts";
-import { SCHEMA_HASH } from "#shared/db/migrations.ts";
+} from "#db/migrations/schema/version.ts";
+import { SCHEMA_HASH } from "#db/migrations.ts";
 
 describe("db > migrations > schema change guard", () => {
   // If this test fails, SCHEMA was changed. Existing production databases
@@ -104,9 +104,9 @@ describe("db > migrations > schema change guard", () => {
         "2026-07-26_payment_records",
         "2026-08-04_login_attempt_stamp",
         "2026-08-10_refund_authority_records",
-        "2026-08-22_integration_operations",
+        "2026-08-18_sumup_recovery_state",
       ],
-      schemaHash: "1m0e4uy",
+      schemaHash: "g0zsbw",
     });
   });
 
@@ -121,7 +121,7 @@ describe("db > migrations > schema change guard", () => {
       dbSchemaHash: "db_schema_hash",
       latestDbUpdate: "latest_db_update",
       latestUpdate:
-        "Keep every integration booking retry tied to its original result.",
+        "Ask SumUp what became of every checkout, so a payment whose message went missing still becomes a ticket.",
       migrationLock: "migration_lock",
       schemaMigrations: "schema_migrations",
     });

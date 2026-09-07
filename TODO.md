@@ -1,5 +1,29 @@
 # TODO — remaining follow-ups
 
+## Surface unknown SumUp recovery states to the operator (from PR #2109)
+
+A `sumup_checkouts` row whose stored `recovery_state` word the machine does not
+know is never selected by the recovery queue (the queue asks only for the
+declared checkable states), never pruned (pruning names the same known states),
+and never raised — the row just sits. CodeRabbit flagged this on #2109 and asked
+for a raised error in the queue read; that would make one bad row brick the
+whole recovery task (the run selects its batch before any row's word is known,
+so a throw there cancels every check, every cycle — the same head-of-line freeze
+the per-row catch in `recovery-run.ts` exists to prevent), which is why the
+queue stays quiet and the row is kept for a person to find.
+
+The deliberate design: the reader (`parseSumupRecoveryState`) raises loudly the
+moment such a row is ever selected, and surfacing stored impossible states to an
+operator is the schema atlas "live check" job
+(`src/shared/db/joint-state-scan.ts` is the pattern — a bounded scan that
+reports hits rather than acting on them). The live check does not yet know about
+recovery states. Starting point: add a scan query for `recovery_state NOT IN`
+the machine's own vocabulary, keyed by the `SumupRecoveryStateSchema` options so
+a new state word must teach the scan, and show hits on `/admin/schema`'s live
+check alongside the payment machines' illegal combinations.
+
+---
+
 PR #2051 shows the public site menu on booking pages (dropped in iframe mode and
 when the public site is off). It builds the menu with `publicNavProps(null)`
 (`renderCtx` in `src/features/public/ticket-submit.ts`), which takes
@@ -597,15 +621,6 @@ a live legacy engine, read-through, dual write, or fallback authority.
 The seven accepted safety rules are recorded as acceptance constraints in
 [`docs/payment-aggregate-acceptance.md`](docs/payment-aggregate-acceptance.md).
 
-- **Split payment-provider persistence out of `src/shared/db/settings.ts`.**
-  Review of PR 1 correctly noted that the settings assembly is already over the
-  preferred 400-line size and now also owns provider activation, recovery,
-  credential-state preservation, and cache synchronization. The clean starting
-  point is `src/shared/db/settings/payment-provider.ts`, moving the provider
-  getters and `settings.update` methods together with mirror tests under
-  `test/shared/db/settings/payment-provider/`. This is deferred because that
-  extraction would take PR 1 beyond its strict 800-line source-change limit.
-
 - **Split provider credential routes out of
   `src/features/admin/settings-helpers.ts`.** The generic helper now also owns
   `ProviderCredentialsConfig`, `persistProviderCredentials`, and
@@ -614,10 +629,6 @@ The seven accepted safety rules are recorded as acceptance constraints in
   `test/features/admin/settings-helpers/provider-credentials.test.ts` with it.
   This is deferred because doing the move in PR 1 would break the same strict
   800-line source-change limit.
-
-- **Split `src/features/api/webhooks.ts` below 400 lines.** Move the payment
-  callback and webhook processing paths into focused modules. This predates PR 1
-  and is deferred because the split would exceed its strict source-change limit.
 
 ## Payment aggregate — what the closed rewrite taught us
 
@@ -887,43 +898,28 @@ the percentage-surcharge cap noted below, which is a latent correctness bug
 
 ---
 
-## The shared "reasons" shape for validation failures — shipped
+## Surfaces the shared "reasons" shape now makes cheap
 
-_Origin: reviewing the package-restriction work (PR #1770); built once the
-collect-all need (the multi-item "no shared date" diagnostic) arrived._
+_Origin: the package-restriction work (PR #1770), which built the combinator in
+`src/shared/reasons.ts` and converged the parent/child edge rules
+(`src/shared/listing-parents-rules.ts`), the package member rules
+(`src/shared/package-membership.ts`), and the group homogeneity rules
+(`groupListingTypeError` in `src/shared/db/groups.ts`) onto it._
 
-What shipped:
+Each of these is one rule row plus one surface (see the restrictions audit
+above):
 
-- **The combinator.** `src/shared/reasons.ts`: a `Reason` answers with the
-  message to show or null, and one rule list serves both runners — `firstReason`
-  (fail-fast; list order is precedence) and `allReasons` (name every problem at
-  once).
-- **The converged tables.** The parent/child edge rules
-  (`src/shared/listing-parents-rules.ts`), the package member rules
-  (`src/shared/package-membership.ts` — messages render inside the rules, so the
-  separate block-code layer is gone), and the group homogeneity rules
-  (`groupListingTypeError` in `src/shared/db/groups.ts`). `CAPACITY_RULES`
-  deliberately did NOT converge: it classifies which checks apply, it does not
-  refuse with a message — a genuinely different shape.
-- **The `kind` tag, as a reporter.** `reportInvariant`
-  (`src/shared/invariant-errors.ts`) renders an operator-facing flash whose
-  message means a system promise broke AND reports it through `logError`'s
-  existing fan-out (console, ntfy, activity log, Sentry) under
-  `E_INVARIANT_REPORTED`. `error.refund_not_recorded` is the first tagged key;
-  tag a new key only when the flash means "repair the data by hand".
-- **The first collect-all consumer.** `src/shared/booking/cart-conflicts.ts` +
-  the ticket page name the clashing items when a multi-item page has no shared
-  date or booking length (was: a bare "No dates are currently available").
+- Grey out incompatible listings in the add-listings picker.
+- Disable the two either/or control pairs.
+- Surface the child-duration clash at save time.
+- Warn the operator about the chooser own-cap.
 
-Still correct, unchanged: i18n keys ARE the error codes (no registry needed);
-fail-fast stays the default for forms — `allReasons` is only for surfaces that
-must name every problem at once; ordinary validation failures stay out of
-Sentry.
-
-Follow-ups this mechanism now makes cheap (each is a rule row + a surface, see
-the restrictions audit above): greying out incompatible listings in the add-
-listings picker, the two either/or disabled-control pairs, surfacing the
-child-duration clash at save time, and the chooser own-cap warning.
+Three decisions bound that work. The i18n keys are the error codes, so no
+registry is needed. Fail-fast stays the default for forms, and `allReasons` is
+only for a surface that must name every problem at once. An ordinary validation
+failure stays out of Sentry: `reportInvariant`
+(`src/shared/invariant-errors.ts`) is for a broken system promise, and a new key
+gets its `kind` tag only when the flash means "repair the data by hand".
 
 ## Deferred Codex suggestions from PR #1975 (API documentation examples)
 
@@ -1383,6 +1379,30 @@ non-equivalent mutant on the unchanged `folded-booking.ts`. Five equivalents
 `scripts/mutation/equivalent-mutants/` with proofs — no unsuppressed survivors
 remain.
 
+## Split `test/shared/db/settings.test.ts` by what each part covers
+
+_Noticed while moving the payment provider settings out of
+`src/shared/db/settings.ts` (PR #2114), which took the file from 747 lines to
+651._
+
+The file is still one grab-bag over four modules, and well past the 400-line
+target. Each `describe` block already names its own part of the split:
+
+- `basic CRUD`, `settings version probe`, and `writeRawBatch` cover
+  `settings/raw-writes.ts` and `settings/cache.ts`, which have their own mirror
+  files at `test/shared/db/settings/raw-writes.test.ts` and no cache file yet.
+- `buildSnapshot via loadKeys` and `loadKeys (on-demand)` cover
+  `settings/load.ts`, whose mirror file already exists.
+- `setup` covers `settings/setup.ts`.
+- `timezone cache` covers the country-derived fields.
+- The four `superuserChoice` blocks and `orphan-purge settings` cover plain
+  accessors and can share one file.
+
+Move each group to its mirror path under `test/shared/db/settings/`. The
+payment-provider move in #2114 is the worked example: the mutation runner picks
+direct tests by mirror path alone, so a group that sits in the wrong file does
+not run for the source it covers.
+
 ## Split `render-selector.test.ts` by what each case actually checks
 
 _Origin: Codex review on PR #1926 (test reorganisation)._
@@ -1444,19 +1464,6 @@ can be split into a folder of the same names and each pair stays mirrored (which
 is what the mutation gate wants). Out of scope for #1944, whose job was closing
 the mutation gaps rather than moving the file around; the file scores 100% as it
 stands, so the split can be a pure move.
-
----
-
-## Two suites now cover the attendees list — done
-
-_Origin: Codex review of PR #1993 (direct tests for the four testless modules)._
-
-Consolidated. The three suites (the mirrored direct suite plus
-`test/integration/server/attendees-list.test.ts` and
-`test/integration/server/attendees-csv.test.ts`) merged into one mirrored suite
-at `test/features/admin/attendees-list/` (`page`, `filters`, `rows`, `csv`),
-keeping the stronger variant of each duplicated rule and every unique case. The
-two integration files were deleted.
 
 ---
 
@@ -1640,14 +1647,18 @@ It has since been seen more, in `test/scripts/stripe-mock/lifecycle.test.ts`
 ("stops trying once the mock has been started as many times as asked", on CI for
 PR #1968, and "gives a mock time to shut itself down before killing it", on CI
 for PR #2032 — the latter now hardened: the fixture notes when it wins its port,
-and the test retries on a fresh port when that note is missing), with a second
-symptom worth knowing about. That test counts how many times the fake mock was
-started and expects one start per try asked for. A try whose freshly picked port
-already has something listening on it is abandoned _before_ the mock is started,
-so the count comes up short and the test fails — even though the starter did try
-the number of times it was asked to. Handing out ports so no two tests can
-receive the same one would fix this too; short of that, the count is the wrong
-thing to measure.
+and the test retries on a fresh port when that note is missing), and in
+`test/scripts/stripe-mock/ports.test.ts` ("keeps a reserved port unavailable
+until release", on CI for PR #2114 — the test released its reservation and then
+re-bound the same number, which a suite running beside it can take in that
+window, so the re-bind now goes through `retryWhilePortTaken`). There is a
+second symptom worth knowing about. That test counts how many times the fake
+mock was started and expects one start per try asked for. A try whose freshly
+picked port already has something listening on it is abandoned _before_ the mock
+is started, so the count comes up short and the test fails — even though the
+starter did try the number of times it was asked to. Handing out ports so no two
+tests can receive the same one would fix this too; short of that, the count is
+the wrong thing to measure.
 
 ## The Turso upload suite sometimes dies with no diagnostic at all
 
@@ -1704,33 +1715,6 @@ logging one, but pointing is not proving — do not "fix" this one from the shap
 of the test.
 
 ---
-
-## Four feature modules had no test at their mirrored path — now they do
-
-_Origin: `deno task precommit:mutation` on the notes-migration branch, which
-could not start. Closed by the direct-test pass that followed._
-
-All four now have a direct test at their mirrored path, so the gate no longer
-refuses to start on a branch that touches them:
-
-- `src/features/admin/attendee-page.ts` →
-  `test/features/admin/attendee-page.test.ts` (100%, two recorded equivalents)
-- `src/features/admin/attendees-list.ts` → `test/features/admin/attendees-list/`
-  (100%)
-- `src/features/admin/listing-page-data.ts` →
-  `test/features/admin/listing-page-data/` (100%, one recorded equivalent)
-- `src/features/api/payment-processing/store-refund.ts` →
-  `test/features/api/payment-processing/store-refund.test.ts` (100%)
-
-Every one of them now catches every mutation the gate demands, so a branch
-touching any of them can pass without first writing the tests that should
-already have existed.
-
-`src/features/admin/attendee-notes.ts` was in the same state and was fixed
-earlier: its route suite drives real pages through the session helpers, so it
-moved from `test/integration/admin/` to `test/features/admin/`, which is where
-that kind of suite belongs (see "Let the misplaced-test list see past request
-helpers" above).
 
 ## Two people setting a site up at the same moment can both succeed
 
@@ -2440,34 +2424,33 @@ locally-recorded canonical charge. An attendee-wide `refund_cash` leg or a
 returned sibling charge is never deletion authority. Keep that exact-charge rule
 when the stable obligation model replaces the current booking projection.
 
-## The stripe-mock start-count test races its own subprocesses
+## The stripe-mock start-count test read a port somebody else had taken — fixed
 
 `test/scripts/stripe-mock/lifecycle.test.ts` — "stops trying once the mock has
-been started as many times as asked" — failed once on CI (PR #2065, run
-31501332067, 22,419 of 22,420 passing) on a commit that changed only Markdown
-and a test comment, and passes reliably locally.
+been started as many times as asked" — failed on CI twice on commits that
+changed only Markdown (PR #2065 run 31501332067, and PR #2104 run 32130150568 at
+24,020 of 24,021 passing), and passed reliably locally.
 
-The counting mock is a shell script whose whole body is `echo x >> <countPath>`
-(`writeCountingFailingMock` in `test/scripts/stripe-mock/fixtures.ts`).
-`triesBeforeGivingUp` spawns it three times, then reads the file ONCE with
-`startCount` and asserts exactly 3.
+**The first diagnosis recorded here was wrong**, and it is worth keeping the
+correction. It said the parent read the count file before the last `/bin/sh` had
+appended its line. It cannot: a failing attempt ends at
+`await stopProcess(spawned.process, ...)`, and `stopProcess` awaits the child's
+`status` on both of its branches — `beforeTimeout` resolves when the status
+does, and the timeout branch awaits it after the SIGKILL. Every spawned child
+has therefore exited, and written, before `startStripeMock` rejects.
 
-Nothing makes the children's writes happen-before that read. Each attempt gives
-up on `waitForOwnedStripeMock` returning false, which happens either when the
-child's `status` promise resolves OR when the per-attempt budget (50ms in this
-test) elapses — so the parent can move on, and finally reject and be read, while
-the last `/bin/sh` has been spawned but has not yet appended its line. On a
-loaded runner that gap is easily wide enough, and the count reads 2.
+The real cause is a stolen port. `attemptStartStripeMock` has exactly one early
+return before it spawns: the port is already listening, so an unpinned attempt
+gives up and asks for another. `withUnusedPort` picks a free port and lets go of
+it before the start binds it, so another suite can take it in between — and that
+attempt never spawns, so the count comes up one short. The sibling test at
+"gives a mock time to shut itself down" already guarded against exactly this
+with `retryWhilePortTaken`; `triesBeforeGivingUp` did not.
 
-Two ways to fix it. Wait for the count to REACH the expected number with a
-deadline instead of reading once — the property is "three starts happened", not
-"three starts had happened by the instant the promise rejected". Or make
-`startStripeMock` await each child's exit before the next attempt, which is
-tidier anyway: the CI run's cleanup reported an orphan process, and a start path
-that leaves children behind is worth a look on its own.
-
-The two sibling cases (`toBe(1)`) are not exposed, since one attempt gives the
-single child far longer to write before the read.
+`triesBeforeGivingUp` now takes the count it wants and retries on a fresh port
+while it comes up short, over the same shared helper. `retryWhilePortTaken`
+takes an optional description, read only once every try is spent, so a run that
+never gets a clean port reports what it actually saw.
 
 ## A schema migration between the two payment-record migrations can stop an upgrade
 
@@ -2502,84 +2485,41 @@ scope so intermediate applies never touch tables the migration does not declare.
 The empty-rows guard in `clearDormantPaymentTables` is the model for the drop;
 keep the loud refusal on non-empty tables.
 
-## A completed Square webhook whose order reads as missing is acked, not retried
+## Split the three oversized e2e-payments files
 
-_Origin: Codex review on PR #2065 (thread on `src/shared/square-provider.ts`)._
+_Origin: a self-review of PR #2116 against AGENTS.md._
 
-In `resolveWebhookSession`, a completed payment webhook calls
-`retrieveSession(orderId, paymentId)`. `readSessionOrder` maps a `missing` order
-read to `null` (a debug log), `resolveWebhookSession` turns `null` into
-`"skip"`, and the webhook handler acknowledges 200 — so Square stops
-redelivering. The codebase already treats the adjacent lag windows as retryable:
-malformed metadata for a completed payment throws
-(`UNUSABLE_METADATA.
-retryCompletedWebhook`), and a payment that does not read
-back COMPLETED throws (`readOrderPayment`). A missing order is the same
-eventual-consistency window — the webhook can genuinely arrive before the order
-is readable — and should fail the boundary the same way instead of skipping, so
-Square redelivers and the buyer does not stay charged with no booking and no
-refund.
+Three harness files are above the ~400-line guideline, and two of them crossed
+it in that pull request:
 
-Starting point: `readSessionOrder` in `src/shared/square-provider.ts` — a
-`missing` read under a `paidPaymentId` should throw like the malformed case.
+| File                                         | Lines |
+| -------------------------------------------- | ----- |
+| `e2e-payments/src/cucumber/steps/booking.ts` | 484   |
+| `e2e-payments/src/browser.ts`                | 430   |
+| `e2e-payments/src/flow.ts`                   | 404   |
 
-## Harden the live payment harness so green means what it claims
+The splits are already visible in the code. `browser.ts` carries the
+click-witness helpers (`armClickWitness`, `armWitnessedAttempt`, and the
+`Witnessed` shape) above `launchAppBrowser`, and they depend on nothing else in
+the file, so they move to their own module whole. `booking.ts` carries the
+webhook-evidence block (`WEBHOOK_DID`, `WEBHOOK_HELD`, `callbackLine`,
+`webhookEvidenceThen`), which is one concept and reads as one. `flow.ts` is four
+lines over, so it needs no split of its own once the ledger reader has somewhere
+better to live.
 
-_Origin: Codex review on PR #2065 (a dozen threads on `e2e-payments/`), all
-verified against the code and none blocking the merge — the nightly run passes,
-but each item is a way it could pass while proving less than its steps claim._
+Do this when the harness is next open for other work, so the split lands with a
+real run rather than on its own.
 
-- **Partial-startup leak** (`cucumber/support/hooks.ts`): the `Before` hook
-  acquires server → tunnel → browser → sessions with no unwind; a rejection
-  after the first acquire leaks the app-server child into later scenarios.
-  Attach each resource as it is acquired or unwind in `finally`.
-- **No failure notification before the summary** (`main.ts`): the terminal
-  `run().catch` reports but never calls `notifyFailure`, so missing credentials
-  and other pre-summary failures ping nothing.
-- **Ambiguous click replay** (`browser.ts` `actOnControl`): when `ordinary()`
-  dispatched a submission but its navigation wait failed, the still-interactable
-  control is submitted again through the DOM fallback — a second POST on live
-  refund forms. Only fall back for failures proven to predate dispatch.
-- **Chromium surviving teardown** (`browser.ts` `stop`): when both close paths
-  fail, the hook logs and resolves; the leaked browser keeps consuming runner
-  resources. Reject or kill the process.
-- **Provider fetches without a bound** (`providers/shared.ts`): the harness's
-  own fetches carry no abort signal (the production transports now share
-  `PROVIDER_TIMEOUT_MS`); a hung sandbox read outlives its hook.
-- **Malformed Stripe list answers** (`providers/stripe.ts`): both the
-  endpoint-list and refund-list reads default a missing `data` field to `[]`, so
-  a malformed 2xx can silently pass as "nothing there". Validate the documented
-  fields at the boundary.
-- **Partial final refund passes** (`cucumber/steps/refund.ts`): the final
-  non-growth check only rejects amounts GREATER than the capture; a completed
-  400-of-2500 observation after the first check passes. Require exactness for
-  every completed final observation.
-- **Broad refresh assertion** (`cucumber/steps/refund.ts`): the second,
-  observation-only refresh matches `/payment status/i`, which the rendered
-  button satisfies — an erroring refresh still passes. Assert the specific
-  outcome (the exact-amount first refresh is the model).
-- **Protection not rechecked after refresh** (`cucumber/steps/refund.ts`): the
-  Refund/Delete-unavailable assertions run before the final refresh; a refresh
-  that re-enabled them would pass. Re-read the actions after it.
-- **Vacuous webhook coverage** (`cucumber/steps/booking.ts`):
-  `holdFirstAppReturn` captures the return URL but holds nothing (interception
-  proved unreliable), so the browser return can book before "Stripe's signed
-  webhook confirms the payment" — the step then only polls the roster and passes
-  with the webhook broken. Assert independent webhook evidence (or rename the
-  claim).
-- **memberB never verified** (`order-flow.ts`): `verifyComplexOrder` asserts
-  member A's two paths and the plain listing; member B's booking line and its £6
-  kit income are never checked in either the free or paid scenario.
-- **Configured artifact directory ignored** (`main.ts`): cleanup, reports, and
-  the step summary use the hard-coded `e2e-payments/artifacts` while scenarios
-  write under `E2E_ARTIFACTS_DIR`; derive the root from config.
+## Give the live payment harness direct tests through injectable seams
 
-The coverage-exclusion thread from the same round (`scripts/run-tests.ts`) is
-the same theme: the harness modules are excluded wholesale with the reasoning
-recorded beside the list, and the pure helpers stay covered. The durable fix is
-the one Codex names — push the env/config parsing behind injectable seams so
-those branches get direct in-process tests — which is worth doing when the
-harness is next open.
+_Origin: the coverage-exclusion thread of the Codex review on PR #2065._
+
+The harness modules under `e2e-payments/src/` are excluded from coverage
+wholesale in `scripts/run-tests.ts`, with the reasoning recorded beside the
+list; only the pure helpers stay covered. The durable fix is the one Codex names
+— push the env/config parsing behind injectable seams so those branches get
+direct in-process tests. The twelve behaviour findings from the same review
+round are fixed; this remaining item is the test-architecture half.
 
 ## Deleting your own contact record also deletes your promotions opt-out
 
@@ -2640,3 +2580,103 @@ state nothing can currently produce. If a real schema change ever rebuilds
 `processed_payments` anyway, add this check in the same rebuild: the DDL belongs
 on the last column via the `alsoAbout` pattern in
 `src/shared/db/migrations/schema/payments/columns.ts`.
+
+---
+
+## Close the 14 mutation survivors in `src/shared/db/listing-parents.ts` (from PR #2110)
+
+PR #2110 mutated `src/shared/db/listing-edge-write.ts` to a 100% score. The same
+run also covered `src/shared/db/listing-parents.ts`, because the assertion that
+the PR changed lives in that file's mirror tests. The run found 14 survivors in
+`listing-parents.ts`. The PR does not change that file, so the survivors sit
+outside its own gate. The branch-level `precommit:mutation` step covers only the
+sources that a branch changes.
+
+The survivors fall into three shapes:
+
+- Eleven are "did this list come back empty?" branches. No test tells the empty
+  arm from the full one.
+- One is the sort comparator inside `listingsForLinks`, where a divide replaces
+  the subtraction.
+- Two are fallbacks in `edgeIncompatibilityAfterChange`, where `||` replaces
+  `??`. Check first whether either left side can hold a falsy-but-present value.
+  If it cannot, the entry belongs in `equivalent-mutants/` with that proof
+  rather than in a test.
+
+```
+listingIdsWithLinks~1dqzuig            ?: → arms swapped
+listingIdsWithLinks~0zl9wvu            > → <=,  0 → 1
+getNonStandaloneChildIds~1vmop13       ?: → arms swapped
+getNonStandaloneChildIds~00bh4s4       0 → 1
+anyNonStandaloneChild~0v88xt2          > → <=,  0 → 1
+listingsForLinks~1gjwt45               - → /
+listingsForLinks~14c1k8g               ?: → arms swapped
+listingsForLinks~1v5jl2k               > → <=,  0 → 1
+edgeIncompatibilityAfterChange.children~0cip5re   ?? → ||
+edgeIncompatibilityAfterChange.parents~1cm1r1e    ?? → ||
+edgeIncompatibilityAfterChange~02ardat            ?: → arms swapped
+```
+
+Starting point: `listingIdsWithLinks` is exported and pure. A table of maps — no
+links, some links, all links — kills its three survivors on its own.
+`getNonStandaloneChildIds` and `anyNonStandaloneChild` need a listing that is a
+child, a listing that is `bookable_alone`, and the empty-input short circuit.
+`listingsForLinks` is private, so reach it through the readers that hydrate the
+links. Note that its `-` → `/` survivor sits in a sort comparator. That one
+needs two keys whose order a divide changes. Reproduce with:
+
+```bash
+deno task mutation --source src/shared/db/listing-parents.ts \
+  --test 'test/shared/db/listing-parents/*.test.ts' --harness
+```
+
+---
+
+## Square treats a malformed payment link as "provider not configured"
+
+_Origin: the 2026-08 refactor survey (ADMIN_SURFACE_PLAN.md)._
+
+Stripe and SumUp build their checkout through `makeCreateCheckoutSession`
+(`src/shared/payment-helpers.ts:483`). Its `requiredCheckoutResult` throws when
+a non-null provider response lacks its session id or URL. Square opted out:
+`squarePaymentProvider.createCheckoutSession`
+(`src/shared/square-provider.ts:241-246`) reads the created payment link with
+`toCheckoutResult(link?.orderId, link?.url, "Square")`, which logs and returns
+`null` for the same condition. A `null` checkout result means "provider not
+configured" to callers. So a Square payment link that arrives without its
+`orderId` or `url` is reported as an unconfigured provider, where the identical
+Stripe/SumUp condition raises loudly. That breaks the offensive-programming
+rule: an absent expected field from structured external data must fail at its
+boundary, not become a quiet default. The fix is to route Square through
+`makeCreateCheckoutSession` (create = `squareApi.createPaymentLink`, readResult
+= `link => ({ id: link.orderId, url: link.url })`), keep null-link =
+not-configured, and add a regression test in which a payment link arrives
+without its URL and the checkout throws instead of a "not configured" answer.
+This is a payment behaviour change, so it needs its own small PR with the test.
+Starting points: `src/shared/square-provider.ts:241`,
+`src/shared/payment-helpers.ts:455-501`, the Square checkout tests under
+`test/`.
+
+---
+
+## One admin form POST helper, not three
+
+_Origin: widening `adminFormPost` to accept repeated fields (PR #2115)._
+
+`adminFormPost` in `test/test-utils/session.ts` now takes the same
+`TestFormValues` its underlying `mockFormRequest` always accepted, so it can
+post a repeated field such as `user_ids`. That makes two local helpers close to
+redundant: `adminPost` in `test/features/admin/groups/helpers.ts` (13 call
+sites) and the `adminPost` in `test/test-utils/servicing.ts`. Each signs in,
+adds the CSRF token, and posts a form.
+
+The two differ from the shared helper in small ways. `adminFormPost` also loads
+the settings keys and sends `settings_version`, and it returns the cookie and
+the token beside the response, where the local helpers return the raw
+`Response`. Fold the call sites onto `adminFormPost` and delete the local
+helpers, rather than leaving one operation with three names. Do it in its own
+pull request, because a form that starts sending `settings_version` can change
+what a version-guarded save does.
+
+Starting points: `test/test-utils/session.ts:402`,
+`test/features/admin/groups/helpers.ts:19`, `test/test-utils/servicing.ts`.

@@ -1,13 +1,12 @@
 import { expect } from "@std/expect";
 import { it as test } from "@std/testing/bdd";
-import { createOwnerCrudHandlers } from "#routes/admin/owner-crud.ts";
-import { type HolidayInput, holidays } from "#shared/db/holidays.ts";
+import { type HolidayInput, holidays } from "#db/holidays.ts";
+import { createCrudHandlers } from "#routes/admin/crud-handlers.ts";
 import type { FormValues } from "#shared/forms/definition.ts";
 import {
   defineNamedResource,
   type NamedOperations,
 } from "#shared/rest/resource.ts";
-import type { Holiday } from "#shared/types.ts";
 import { getHolidayForm } from "#templates/fields/admin.ts";
 import { wasActivityLogged } from "#test-utils/activity-log.ts";
 import { expectRedirectWithFlash } from "#test-utils/assertions.ts";
@@ -15,6 +14,7 @@ import { describeWithEnv } from "#test-utils/db.ts";
 import { createTestHoliday } from "#test-utils/db-helpers/holidays.ts";
 import { mockFormRequest } from "#test-utils/mocks.ts";
 import { testCookie, testCsrfToken } from "#test-utils/session.ts";
+import type { Holiday } from "#types";
 
 type HolidayFormValues = FormValues<ReturnType<typeof getHolidayForm>>;
 
@@ -39,10 +39,10 @@ const crudFor = (
     identifierLabel?: string;
   } = {},
 ) =>
-  createOwnerCrudHandlers({
+  createCrudHandlers({
     getAll: holidays.getAll,
     getName: (row) => row.name,
-    listPath: "/admin/holidays",
+    list: "holidays",
     operations,
     renderDelete: () => "delete",
     renderEditError: (_id, _session, form, error) =>

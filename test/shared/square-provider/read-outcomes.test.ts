@@ -2,8 +2,8 @@
 import { expect } from "@std/expect";
 import { describe, it as test } from "@std/testing/bdd";
 import { stub } from "@std/testing/mock";
-import type { ProviderRead } from "#shared/payment/provider-read.ts";
-import type { ChargeMoney } from "#shared/payment/resources.ts";
+import type { ProviderRead } from "#payment/provider-read.ts";
+import type { ChargeMoney } from "#payment/resources.ts";
 import { squareApi } from "#shared/square/api.ts";
 import type { SquarePayment } from "#shared/square/payment-outcomes.ts";
 import {
@@ -11,21 +11,21 @@ import {
   SquareConnectionError,
 } from "#shared/square/transport.ts";
 import { squarePaymentProvider } from "#shared/square-provider.ts";
+import { rejectionMessage } from "#test-utils/assertions.ts";
+import { withMocks } from "#test-utils/mocks.ts";
+import { asSession } from "#test-utils/payment-session.ts";
+import { gbp } from "#test-utils/payment-state.ts";
 import {
   SQUARE_ORDER_META,
   setupSquareProviderSuite,
   squareMoney,
   withSquareClient,
-} from "#test/test-utils/square/fixtures.ts";
+} from "#test-utils/square/fixtures.ts";
 import {
   completedSquareWebhook,
   squareOrderRead,
   squarePaymentRead,
-} from "#test/test-utils/square/outcomes.ts";
-import { rejectionMessage } from "#test-utils/assertions.ts";
-import { withMocks } from "#test-utils/mocks.ts";
-import { asSession } from "#test-utils/payment-session.ts";
-import { gbp } from "#test-utils/payment-state.ts";
+} from "#test-utils/square/outcomes.ts";
 
 /* jscpd:ignore-end */
 
@@ -163,15 +163,23 @@ describe("square-provider read outcomes", () => {
     );
   });
 
-  test("acknowledges a completed event only when Square proves the order is gone", async () => {
+  test("keeps an order Square cannot find retryable after a completed event", async () => {
     await withSquareClient(
       {
         ordersGet: () => Promise.reject(new SquareApiError(404)),
       },
       async () => {
-        expect(await completedSquareWebhook("pay_gone", "order_gone")).toBe(
-          "skip",
-        );
+        // A 404 used to be read as proof the order was gone, and the event was
+        // acknowledged. A completed payment names an order we created, so the
+        // likelier reading is that Square has not caught up — and an
+        // acknowledgement is final, leaving the buyer charged with no booking.
+        // Retry noise is the cheaper mistake, so this window stays retryable
+        // like every other unreadable order above.
+        expect(
+          await rejectionMessage(
+            completedSquareWebhook("pay_gone", "order_gone"),
+          ),
+        ).toBe("Square order is not readable yet for a completed payment");
       },
     );
   });
