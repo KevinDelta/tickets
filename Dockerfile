@@ -17,7 +17,16 @@ LABEL org.opencontainers.image.licenses="AGPL-3.0-or-later" \
       org.opencontainers.image.source="https://github.com/KevinDelta/tickets"
 
 # Create non-root user for running the application
-RUN addgroup -S tickets && adduser -S tickets -G tickets \
+RUN apk add --no-cache \
+      fontconfig \
+      freetype \
+      gdk-pixbuf \
+      harfbuzz \
+      pango \
+      py3-pip \
+      ttf-dejavu \
+    && pip install --no-cache-dir --break-system-packages weasyprint==69.0 \
+    && addgroup -S tickets && adduser -S tickets -G tickets \
     && mkdir -p /data && chown tickets:tickets /data
 
 COPY --from=build /app/deno.json /app/deno.lock ./
@@ -29,10 +38,11 @@ VOLUME /data
 EXPOSE 3000
 
 ENV DB_URL="file:/data/tickets.db"
+ENV TICKET_PDF_ENABLED="true"
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD ["deno", "eval", "const r = await fetch('http://localhost:3000/health'); if (!r.ok) Deno.exit(1);"]
 
 USER tickets
 
-CMD ["deno", "run", "--allow-net", "--allow-env", "--allow-read", "--allow-write=/data", "--allow-sys", "--allow-ffi", "src/index.ts"]
+CMD ["deno", "run", "--allow-net", "--allow-env", "--allow-read", "--allow-run=weasyprint", "--allow-write=/data", "--allow-sys", "--allow-ffi", "src/index.ts"]

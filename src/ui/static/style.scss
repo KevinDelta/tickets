@@ -2244,6 +2244,12 @@ button.secondary:hover,
   padding: var(--space-m) 0;
 }
 
+.ticket-pdf-link {
+  margin: 1rem auto;
+  max-width: 560px;
+  text-align: center;
+}
+
 .ticket-card {
   flex: 0 0 auto;
   width: min(25rem, 100%);

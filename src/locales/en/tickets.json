@@ -9,6 +9,7 @@
   "tickets.apple_wallet": "Apple Wallet",
   "tickets.google_wallet": "Google Wallet",
   "tickets.download": "Download:",
+  "tickets.download_pdf": "Download PDF ticket",
   "fields.wallet.apple.date_label": "DATE",
   "fields.wallet.apple.location_label": "LOCATION",
   "fields.wallet.apple.booking_date_label": "BOOKING DATE",

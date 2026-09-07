@@ -35,6 +35,19 @@ describe("ticketViewPage listing date and location", () => {
     expect(html).toContain("Monday 15 June 2026 at 15:00 GMT+1");
   });
 
+  test("links to the unified PDF ticket when available", () => {
+    const pdfUrl = "/t/AABB0011CCDDEEFF/pdf";
+    const html = ticketViewPage(
+      [{ entry: testTokenEntry(), token }],
+      false,
+      false,
+      new Map(),
+      pdfUrl,
+    );
+    expect(html).toContain(`href="${pdfUrl}"`);
+    expect(html).toContain("Download PDF ticket");
+  });
+
   test("does not show listing date when listing has empty date", () => {
     const cards = [
       {

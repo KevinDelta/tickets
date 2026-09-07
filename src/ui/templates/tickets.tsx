@@ -331,6 +331,7 @@ export const ticketViewPage = (
   appleWalletEnabled = false,
   googleWalletEnabled = false,
   packageDisplays: ReadonlyMap<number, PackageDisplay> = new Map(),
+  pdfTicketUrl?: string,
 ): string => {
   const htmlParts = renderCardsHtml(
     cards,
@@ -352,8 +353,15 @@ export const ticketViewPage = (
     heading,
     title,
   )(
-    <div class="ticket-slider">
-      <Raw html={cardHtml} />
-    </div>,
+    <>
+      <div class="ticket-slider">
+        <Raw html={cardHtml} />
+      </div>
+      {pdfTicketUrl && (
+        <div class="ticket-pdf-link">
+          <a href={pdfTicketUrl}>{t("tickets.download_pdf")}</a>
+        </div>
+      )}
+    </>,
   );
 };
