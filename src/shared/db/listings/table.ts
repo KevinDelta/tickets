@@ -2,8 +2,8 @@
 
 import { projectCatalogFields } from "#shared/catalog-fields/definition.ts";
 import {
-  type ListingInput,
   listingCatalogFields,
+  type ListingInput,
 } from "#shared/catalog-fields/fields.ts";
 import { decrypt, encrypt } from "#shared/crypto/encryption.ts";
 import { hmacHash } from "#shared/crypto/hashing.ts";
@@ -13,12 +13,14 @@ import {
   idAndEncryptedSlugSchema,
 } from "#shared/db/common-schema.ts";
 import { defineIdTable } from "#shared/db/define-id-table.ts";
+import { KernelLocationSchema } from "#shared/kernel-location.ts";
 import { decryptTextOrEmpty } from "#shared/db/encrypted-text.ts";
 import { col } from "#shared/db/table.ts";
 import { decryptImageFilenameOrEmpty } from "#shared/images/broken.ts";
 import { ErrorCode, logError } from "#shared/logger.ts";
 import { nowIso } from "#shared/now.ts";
 import type { Listing } from "#shared/types.ts";
+import * as v from "valibot";
 
 /** Compute the blind index used for listing slug lookups. */
 export const computeSlugIndex = (slug: string): Promise<BlindIndex> =>
@@ -99,6 +101,10 @@ export const rawListingsTable = defineIdTable<Listing, ListingInput>(
       readProjectedImageFilename("thumbnail image"),
     ),
     image_url: col.projected<string>(readProjectedImageFilename("image")),
+    kernel_location: col.json(v.nullable(KernelLocationSchema), {
+      context: "listings.kernel_location",
+      default: () => null,
+    }),
     ...projectCatalogFields(listingCatalogFields, "columns", {}),
   },
 );

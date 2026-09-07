@@ -104,11 +104,19 @@ const listingEvidence = (listing: {
   max_attendees: number;
   max_quantity: number;
   name: string;
+  kernel_location: {
+    latitude: number;
+    longitude: number;
+    updatedAt: string;
+  } | null;
   slug: string;
 }) => ({
   availableQuantity: availableQuantity(listing),
   bookedQuantity: listing.attendee_count,
   capacity: listing.max_attendees,
+  location: listing.kernel_location === null
+    ? null
+    : { ...listing.kernel_location, source: "ticketing_kernel" as const },
   name: listing.name,
   slug: listing.slug,
 });

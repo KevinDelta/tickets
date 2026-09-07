@@ -415,6 +415,10 @@ export const MIGRATION_REGISTRY: MigrationRegistryEntry[] = [
     "2026-08-22_integration_operations",
     () => import("./2026-08-22_integration_operations.ts"),
   ),
+  entry(
+    "2026-09-06_kernel_location",
+    () => import("./2026-09-06_kernel_location.ts"),
+  ),
 ];
 /* jscpd:ignore-end */
 

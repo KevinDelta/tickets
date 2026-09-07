@@ -20,6 +20,7 @@ import type {
 import { guardFor } from "#shared/validation/guard.ts";
 import { clampInteger, integerAtLeast } from "#shared/validation/number.ts";
 import type { NonEmptyString } from "#shared/validation/string.ts";
+import type { KernelLocation } from "#shared/kernel-location.ts";
 
 /** Type guard: a non-null, non-array object (a Record shape). */
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -90,8 +91,9 @@ export type ContactInfo = {
 };
 
 /** Required name+email with optional phone/address/special_instructions from ContactInfo */
-export type ContactFields = Pick<ContactInfo, "name" | "email"> &
-  Partial<Pick<ContactInfo, "phone" | "address" | "special_instructions">>;
+export type ContactFields =
+  & Pick<ContactInfo, "name" | "email">
+  & Partial<Pick<ContactInfo, "phone" | "address" | "special_instructions">>;
 
 /** UI theme */
 export type Theme = "light" | "dark";
@@ -262,10 +264,10 @@ export const parseDayPrices = (raw: unknown): DayPrices => {
     const days = Number(key);
     const price = Number(value);
     return Number.isInteger(days) &&
-      days >= 1 &&
-      days <= MAX_DURATION_DAYS &&
-      Number.isSafeInteger(price) &&
-      price >= 0
+        days >= 1 &&
+        days <= MAX_DURATION_DAYS &&
+        Number.isSafeInteger(price) &&
+        price >= 0
       ? { days, price }
       : null;
   });
@@ -457,6 +459,8 @@ export interface Listing extends ItemImageColumns {
   hidden: boolean;
   id: number;
   initial_site_months: number;
+  /** Kernel-authored WGS84 evidence for this product/listing, or no location. */
+  kernel_location: KernelLocation | null;
   listing_type: ListingType;
   location: string; // encrypted or empty string
   max_attendees: number;
@@ -618,8 +622,8 @@ export const DELIVERY_ADMIN_LEVELS = ["owner", "manager", "agent"] as const;
 /** Every admin role level — used to gate actions every authenticated user must
  *  reach (e.g. logout). Derived from {@link AdminLevelSchema} so adding a new
  *  role propagates automatically instead of being hand-listed here. */
-export const ALL_ADMIN_LEVELS =
-  AdminLevelSchema.options as readonly AdminLevel[];
+export const ALL_ADMIN_LEVELS = AdminLevelSchema
+  .options as readonly AdminLevel[];
 
 /** Admin role levels */
 export type AdminLevel = v.InferOutput<typeof AdminLevelSchema>;
@@ -627,8 +631,7 @@ export type AdminLevel = v.InferOutput<typeof AdminLevelSchema>;
 /** Build a membership predicate over a role set. Typed at `AdminLevel` so the
  * `as const` role-set constants pass without per-call-site casts. */
 const roleIn =
-  (levels: readonly AdminLevel[]) =>
-  (level: AdminLevel): boolean =>
+  (levels: readonly AdminLevel[]) => (level: AdminLevel): boolean =>
     levels.includes(level);
 
 /** True for back-office staff (owner/manager). */

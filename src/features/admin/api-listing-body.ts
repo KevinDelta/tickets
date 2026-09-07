@@ -8,9 +8,14 @@ import {
   projectCatalogFields,
 } from "#shared/catalog-fields/definition.ts";
 import {
-  type ListingInput,
   listingCatalogFields,
+  type ListingInput,
 } from "#shared/catalog-fields/fields.ts";
+import {
+  type KernelLocation,
+  KernelLocationInputSchema,
+} from "#shared/kernel-location.ts";
+import { nowIso } from "#shared/now.ts";
 import { listingGroups } from "#shared/db/groups.ts";
 import { getStoredListingWithCount } from "#shared/db/listings/records.ts";
 import {
@@ -26,23 +31,25 @@ import { errorResult, okResult, type Result } from "#shared/result.ts";
 import type { ListingWithCount } from "#shared/types.ts";
 
 /** JSON body accepted by POST /api/admin/listings. */
-export type CreateListingBody = Omit<
-  CatalogApiBody<typeof listingCatalogFields>,
-  "date"
-> & {
-  date?: string | null;
-  name: string;
-  max_attendees: number;
-  max_price?: number;
-  group_ids?: number[];
-  /** Day count → price (minor units), e.g. { "1": 1000, "2": 1800 }. */
-  day_prices?: Record<number, number>;
-  /** Listing ids the buyer must choose one of when this listing is booked (the
-   * required-child gate). Only honoured when the parents feature is enabled;
-   * self-edges and unknown ids are dropped, and the same nesting/field/add-on
-   * validation as the edit form runs before the edges are written. */
-  child_listing_ids?: number[];
-};
+export type CreateListingBody =
+  & Omit<
+    CatalogApiBody<typeof listingCatalogFields>,
+    "date"
+  >
+  & {
+    date?: string | null;
+    name: string;
+    max_attendees: number;
+    max_price?: number;
+    group_ids?: number[];
+    /** Day count → price (minor units), e.g. { "1": 1000, "2": 1800 }. */
+    day_prices?: Record<number, number>;
+    /** Listing ids the buyer must choose one of when this listing is booked (the
+     * required-child gate). Only honoured when the parents feature is enabled;
+     * self-edges and unknown ids are dropped, and the same nesting/field/add-on
+     * validation as the edit form runs before the edges are written. */
+    child_listing_ids?: number[];
+  };
 
 /** JSON body accepted by PUT /api/admin/listings/:listingId (all fields optional) */
 export type UpdateListingBody = Partial<CreateListingBody> & { slug?: string };
@@ -98,16 +105,44 @@ const parseDayPrices = (raw: unknown): Record<number, number> => {
  * whole request rather than being silently dropped, so a typo like
  * `["5"]` can't quietly clear a listing's groups. */
 const parseGroupIds = (raw: unknown): Result<number[] | undefined> =>
-  parseOptionalArray<number>(raw, "group_ids", (entry) =>
-    typeof entry === "number" && Number.isInteger(entry) && entry > 0
-      ? okResult(entry)
-      : errorResult("group_ids must contain only positive integer ids"),
+  parseOptionalArray<number>(
+    raw,
+    "group_ids",
+    (entry) =>
+      typeof entry === "number" && Number.isInteger(entry) && entry > 0
+        ? okResult(entry)
+        : errorResult("group_ids must contain only positive integer ids"),
   );
+
+/** Parse evidence without accepting client-authored source or freshness. */
+const parseKernelLocation = (
+  raw: unknown,
+): Result<KernelLocation | null | undefined> => {
+  if (raw === undefined || raw === null) return okResult(raw);
+  if (
+    typeof raw !== "object" ||
+    Array.isArray(raw) ||
+    Object.keys(raw).length !== 2 ||
+    !("latitude" in raw) ||
+    !("longitude" in raw)
+  ) {
+    return errorResult(
+      "kernel_location must contain only latitude and longitude",
+    );
+  }
+  const parsed = v.safeParse(KernelLocationInputSchema, raw);
+  return parsed.success
+    ? okResult({ ...parsed.output, updatedAt: nowIso() })
+    : errorResult("kernel_location must be valid WGS84 coordinates");
+};
 
 /** Validate mapped fields and group ids before building the listing input. */
 const withParsedGroupIds = (
   body: Record<string, unknown>,
-  build: (groupIds: number[] | undefined) => Promise<Result<ListingInput>>,
+  build: (
+    groupIds: number[] | undefined,
+    kernelLocation: KernelLocation | null | undefined,
+  ) => Promise<Result<ListingInput>>,
 ): Promise<Result<ListingInput>> => {
   const invalid = API_BODY_FIELD_RULES.find(
     ([apiKey, schema]) =>
@@ -115,7 +150,12 @@ const withParsedGroupIds = (
   );
   if (invalid) return Promise.resolve(errorResult(invalid[2]));
   const groups = parseGroupIds(body.group_ids);
-  return groups.ok ? build(groups.value) : Promise.resolve(groups);
+  const kernelLocation = parseKernelLocation(body.kernel_location);
+  if (!groups.ok) return Promise.resolve(errorResult(groups.error));
+  if (!kernelLocation.ok) {
+    return Promise.resolve(errorResult(kernelLocation.error));
+  }
+  return build(groups.value, kernelLocation.value);
 };
 
 /** Convert JSON body to ListingInput for create (auto-generates slug) */
@@ -134,12 +174,13 @@ export const bodyToCreateInput = (
   const name = body.name.trim();
   const maxAttendees = body.max_attendees;
 
-  return withParsedGroupIds(body, async (groupIds) => {
+  return withParsedGroupIds(body, async (groupIds, kernelLocation) => {
     const { slug, slugIndex } = await generateUniqueListingSlug();
     return okResult({
       ...projectCatalogFields(listingCatalogFields, "api", body),
       dayPrices: parseDayPrices(body.day_prices),
       groupIds,
+      ...(kernelLocation === undefined ? {} : { kernelLocation }),
       maxAttendees,
       maxPrice: bodyNumber(body, "max_price", 0),
       name,
@@ -159,7 +200,7 @@ export const bodyToUpdateInput = async (
   const parsedName = parseUpdateName(body, existing.name);
   if (!parsedName.ok) return parsedName;
 
-  return withParsedGroupIds(body, async (groupIds) => {
+  return withParsedGroupIds(body, async (groupIds, kernelLocation) => {
     const maxAttendees = bodyNumber(
       body,
       "max_attendees",
@@ -177,14 +218,13 @@ export const bodyToUpdateInput = async (
     return okResult({
       ...projectCatalogFields(listingCatalogFields, "storedApi", existing),
       ...projectCatalogFields(listingCatalogFields, "api", body),
-      dayPrices:
-        body.day_prices !== undefined
-          ? parseDayPrices(body.day_prices)
-          : existing.day_prices,
-      groupIds:
-        groupIds === undefined
-          ? await listingGroups.getIds(existing.id)
-          : groupIds,
+      dayPrices: body.day_prices !== undefined
+        ? parseDayPrices(body.day_prices)
+        : existing.day_prices,
+      groupIds: groupIds === undefined
+        ? await listingGroups.getIds(existing.id)
+        : groupIds,
+      ...(kernelLocation === undefined ? {} : { kernelLocation }),
       maxAttendees,
       maxPrice: bodyNumber(body, "max_price", existing.max_price),
       name: parsedName.value,
