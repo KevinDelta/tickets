@@ -53,6 +53,7 @@ export const testListing = (overrides: Partial<Listing> = {}): Listing => ({
   image_thumb_url: "",
   image_url: "",
   initial_site_months: 0,
+  kernel_location: null,
   listing_type: "standard",
   location: "",
   max_attendees: 100,

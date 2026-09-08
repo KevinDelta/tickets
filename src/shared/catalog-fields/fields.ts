@@ -4,6 +4,7 @@ import { decrypt, encrypt } from "#crypto/encryption.ts";
 import type { BlindIndex } from "#crypto/sealed.ts";
 import { col } from "#db/table.ts";
 import { VALID_DAY_NAMES } from "#shared/day-names.ts";
+import type { KernelLocation } from "#shared/kernel-location.ts";
 import {
   clampDurationDays,
   type DayPrices,
@@ -144,6 +145,8 @@ export interface ListingInput
     Omit<OptionalCatalogFieldValues<typeof listingCatalogFields>, "name"> {
   /** Transient group membership; the group_listings table stores it. */
   groupIds?: number[];
+  /** Omitted leaves the evidence unchanged; null explicitly removes it. */
+  kernelLocation?: KernelLocation | null;
   maxAttendees: number;
   maxPrice: number;
 }

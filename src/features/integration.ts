@@ -10,9 +10,17 @@ import { constantTimeEqual } from "#shared/crypto/utils.ts";
 /* jscpd:ignore-end */
 
 const INTEGRATION_PREFIX = "/integration/";
+/** Fixed freshness so live Tourbook fixture digests stay deterministic. */
+const FIXTURE_LOCATION_UPDATED_AT = "2026-09-06T12:00:00.000Z";
+
 const FIXTURE_LISTINGS = [
   {
     capacity: 12,
+    kernelLocation: {
+      latitude: 57.14774,
+      longitude: -2.096323,
+      updatedAt: FIXTURE_LOCATION_UPDATED_AT,
+    },
     name: "Tourbook integration fixture",
     slug: "tourbook-integration",
   },
@@ -91,6 +99,9 @@ const resetFixture = async (): Promise<void> => {
   for (const listing of FIXTURE_LISTINGS) {
     await listingsTable.insert({
       active: true,
+      ...("kernelLocation" in listing
+        ? { kernelLocation: listing.kernelLocation }
+        : {}),
       maxAttendees: listing.capacity,
       maxPrice: 0,
       maxQuantity: listing.capacity,

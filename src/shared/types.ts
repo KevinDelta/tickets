@@ -11,6 +11,7 @@ import type {
   TokenHash,
   WrappedKey,
 } from "#crypto/sealed.ts";
+import type { KernelLocation } from "#shared/kernel-location.ts";
 import type {
   CalcKind,
   ModifierDirection,
@@ -457,6 +458,8 @@ export interface Listing extends ItemImageColumns {
   hidden: boolean;
   id: number;
   initial_site_months: number;
+  /** Kernel-authored WGS84 evidence for this product/listing, or no location. */
+  kernel_location: KernelLocation | null;
   listing_type: ListingType;
   location: string; // encrypted or empty string
   max_attendees: number;

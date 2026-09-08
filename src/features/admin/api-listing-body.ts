@@ -14,9 +14,14 @@ import {
   listingCatalogFields,
 } from "#shared/catalog-fields/fields.ts";
 import {
+  type KernelLocation,
+  KernelLocationInputSchema,
+} from "#shared/kernel-location.ts";
+import {
   generateUniqueListingSlug,
   parseUpdatedListingSlug,
 } from "#shared/listings-actions.ts";
+import { nowIso } from "#shared/now.ts";
 import {
   bodyNumber,
   parseOptionalArray,
@@ -104,10 +109,41 @@ const parseGroupIds = (raw: unknown): Result<number[] | undefined> =>
       : errorResult("group_ids must contain only positive integer ids"),
   );
 
+/** Parse evidence without accepting client-authored source or freshness. */
+const parseKernelLocation = (
+  raw: unknown,
+): Result<KernelLocation | null | undefined> => {
+  if (raw === undefined || raw === null) return okResult(raw);
+  if (
+    typeof raw !== "object" ||
+    Array.isArray(raw) ||
+    Object.keys(raw).length !== 2 ||
+    !("latitude" in raw) ||
+    !("longitude" in raw)
+  ) {
+    return errorResult(
+      "kernel_location must contain only latitude and longitude",
+    );
+  }
+  const parsed = v.safeParse(KernelLocationInputSchema, raw);
+  return parsed.success
+    ? okResult({ ...parsed.output, updatedAt: nowIso() })
+    : errorResult("kernel_location must be valid WGS84 coordinates");
+};
+
+/** Omitted leaves evidence unchanged; null clears it. */
+const optionalKernelLocation = (
+  kernelLocation: KernelLocation | null | undefined,
+): { kernelLocation?: KernelLocation | null } =>
+  kernelLocation === undefined ? {} : { kernelLocation };
+
 /** Validate mapped fields and group ids before building the listing input. */
 const withParsedGroupIds = (
   body: Record<string, unknown>,
-  build: (groupIds: number[] | undefined) => Promise<Result<ListingInput>>,
+  build: (
+    groupIds: number[] | undefined,
+    kernelLocation: KernelLocation | null | undefined,
+  ) => Promise<Result<ListingInput>>,
 ): Promise<Result<ListingInput>> => {
   const invalid = API_BODY_FIELD_RULES.find(
     ([apiKey, schema]) =>
@@ -115,7 +151,12 @@ const withParsedGroupIds = (
   );
   if (invalid) return Promise.resolve(errorResult(invalid[2]));
   const groups = parseGroupIds(body.group_ids);
-  return groups.ok ? build(groups.value) : Promise.resolve(groups);
+  const kernelLocation = parseKernelLocation(body.kernel_location);
+  if (!groups.ok) return Promise.resolve(errorResult(groups.error));
+  if (!kernelLocation.ok) {
+    return Promise.resolve(errorResult(kernelLocation.error));
+  }
+  return build(groups.value, kernelLocation.value);
 };
 
 /** Convert JSON body to ListingInput for create (auto-generates slug) */
@@ -134,12 +175,13 @@ export const bodyToCreateInput = (
   const name = body.name.trim();
   const maxAttendees = body.max_attendees;
 
-  return withParsedGroupIds(body, async (groupIds) => {
+  return withParsedGroupIds(body, async (groupIds, kernelLocation) => {
     const { slug, slugIndex } = await generateUniqueListingSlug();
     return okResult({
       ...projectCatalogFields(listingCatalogFields, "api", body),
       dayPrices: parseDayPrices(body.day_prices),
       groupIds,
+      ...optionalKernelLocation(kernelLocation),
       maxAttendees,
       maxPrice: bodyNumber(body, "max_price", 0),
       name,
@@ -159,7 +201,7 @@ export const bodyToUpdateInput = async (
   const parsedName = parseUpdateName(body, existing.name);
   if (!parsedName.ok) return parsedName;
 
-  return withParsedGroupIds(body, async (groupIds) => {
+  return withParsedGroupIds(body, async (groupIds, kernelLocation) => {
     const maxAttendees = bodyNumber(
       body,
       "max_attendees",
@@ -185,6 +227,7 @@ export const bodyToUpdateInput = async (
         groupIds === undefined
           ? await listingGroups.getIds(existing.id)
           : groupIds,
+      ...optionalKernelLocation(kernelLocation),
       maxAttendees,
       maxPrice: bodyNumber(body, "max_price", existing.max_price),
       name: parsedName.value,

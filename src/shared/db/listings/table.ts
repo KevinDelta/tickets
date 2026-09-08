@@ -1,5 +1,6 @@
 /** Listing table schema and stored-value transforms. */
 
+import * as v from "valibot";
 /* jscpd:ignore-start -- imports */
 import { decrypt, encrypt } from "#crypto/encryption.ts";
 import { hmacHash } from "#crypto/hashing.ts";
@@ -18,6 +19,7 @@ import {
   listingCatalogFields,
 } from "#shared/catalog-fields/fields.ts";
 import { decryptImageFilenameOrEmpty } from "#shared/images/broken.ts";
+import { KernelLocationSchema } from "#shared/kernel-location.ts";
 import { ErrorCode, logError } from "#shared/logger.ts";
 import { nowIso } from "#shared/now.ts";
 import type { Listing } from "#types";
@@ -101,6 +103,10 @@ export const rawListingsTable = defineIdTable<Listing, ListingInput>(
       readProjectedImageFilename("thumbnail image"),
     ),
     image_url: col.projected<string>(readProjectedImageFilename("image")),
+    kernel_location: col.json(v.nullable(KernelLocationSchema), {
+      context: "listings.kernel_location",
+      default: () => null,
+    }),
     ...projectCatalogFields(listingCatalogFields, "columns", {}),
   },
 );

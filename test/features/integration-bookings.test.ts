@@ -137,6 +137,7 @@ describeWithEnv(
             availableQuantity: 7,
             bookedQuantity: 0,
             capacity: 7,
+            location: null,
             name: "Alpha integration",
             slug: "alpha-integration",
           },
@@ -144,6 +145,12 @@ describeWithEnv(
             availableQuantity: 12,
             bookedQuantity: 0,
             capacity: 12,
+            location: {
+              latitude: 57.14774,
+              longitude: -2.096323,
+              source: "ticketing_kernel",
+              updatedAt: "2026-09-06T12:00:00.000Z",
+            },
             name: "Tourbook integration fixture",
             slug: "tourbook-integration",
           },
@@ -151,6 +158,7 @@ describeWithEnv(
             availableQuantity: 8,
             bookedQuantity: 0,
             capacity: 8,
+            location: null,
             name: "Tourbook soft-channel fixture",
             slug: "tourbook-soft-channel",
           },
@@ -160,8 +168,49 @@ describeWithEnv(
         availableQuantity: 12,
         bookedQuantity: 0,
         capacity: 12,
+        location: {
+          latitude: 57.14774,
+          longitude: -2.096323,
+          source: "ticketing_kernel",
+          updatedAt: "2026-09-06T12:00:00.000Z",
+        },
         name: "Tourbook integration fixture",
         slug: "tourbook-integration",
+      });
+    });
+
+    test("publishes only Kernel-authored WGS84 evidence", async () => {
+      expect((await resetFixture()).status).toBe(200);
+      await listingsTable.insert({
+        ...testListingInput({
+          kernelLocation: {
+            latitude: 57.14774,
+            longitude: -2.096323,
+            updatedAt: "2026-09-06T12:00:00.000Z",
+          },
+          name: "Located integration",
+        }),
+        slug: "located-integration",
+        slugIndex: await computeSlugIndex("located-integration"),
+      });
+
+      const response = await kernelRequest(
+        integrationRequest("/integration/v1/listings/located-integration"),
+      );
+      expect(await response.json()).toEqual({
+        listing: {
+          availableQuantity: 1,
+          bookedQuantity: 0,
+          capacity: 100,
+          location: {
+            latitude: 57.14774,
+            longitude: -2.096323,
+            source: "ticketing_kernel",
+            updatedAt: "2026-09-06T12:00:00.000Z",
+          },
+          name: "Located integration",
+          slug: "located-integration",
+        },
       });
     });
 
