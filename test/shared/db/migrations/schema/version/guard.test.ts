@@ -105,8 +105,9 @@ describe("db > migrations > schema change guard", () => {
         "2026-08-04_login_attempt_stamp",
         "2026-08-10_refund_authority_records",
         "2026-08-18_sumup_recovery_state",
+        "2026-09-06_kernel_location",
       ],
-      schemaHash: "g0zsbw",
+      schemaHash: "142c6qm",
     });
   });
 
