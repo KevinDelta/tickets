@@ -4,7 +4,12 @@ import { stub } from "@std/testing/mock";
 import { builtSites, insertBuiltSite } from "#db/built-sites.ts";
 import { handleRequest } from "#routes";
 import { bunnyCdnApi } from "#shared/bunny-cdn.ts";
-import { addMonthsIso } from "#shared/dates.ts";
+import {
+  addMonthsIso,
+  formatDateLabel,
+  listingDateToCalendarDate,
+} from "#shared/dates.ts";
+import { nowIso } from "#shared/now.ts";
 import { postExpectingNoCheckout } from "#test/integration/routes/_shared-checkout.ts";
 import { expectHtmlResponse } from "#test-utils/assertions.ts";
 import { stubCheckout } from "#test-utils/checkout.ts";
@@ -18,6 +23,13 @@ import {
 import { mockFormRequest, mockRequest } from "#test-utils/mocks.ts";
 import { setupStripe } from "#test-utils/settings.ts";
 
+/**
+ * A renewal deadline that is always still ahead of now. Renewal stacks forward
+ * from max(now, deadline), so only a future deadline exercises the stacking; a
+ * fixed date stops testing it the day it passes.
+ */
+const futureDeadline = (): string => addMonthsIso(nowIso(), 1);
+
 const setupRenewalSite = async () => {
   await insertBuiltSite(
     "Renewal Test Site",
@@ -29,10 +41,9 @@ const setupRenewalSite = async () => {
   );
   const sites = await builtSites.getAll();
   const site = sites.find((s) => s.name === "Renewal Test Site")!;
-  const { token } = await provisionTestBuiltSite(site.id, {
-    readOnlyFrom: "2026-09-01T00:00:00Z",
-  });
-  return { site, token };
+  const readOnlyFrom = futureDeadline();
+  const { token } = await provisionTestBuiltSite(site.id, { readOnlyFrom });
+  return { readOnlyFrom, site, token };
 };
 
 describeWithEnv("routes > renewal", { db: true }, () => {
@@ -41,6 +52,7 @@ describeWithEnv("routes > renewal", { db: true }, () => {
    *  monthly, purchase-only, £5 listing) + `setupRenewalSite` + `mockRequest`
    *  scaffold shared by the noindex, terms, and deadline tests. */
   const visitRenewalPicker = async (): Promise<{
+    readOnlyFrom: string;
     response: Response;
     token: string;
   }> => {
@@ -50,11 +62,11 @@ describeWithEnv("routes > renewal", { db: true }, () => {
       purchaseOnly: true,
       unitPrice: 500,
     });
-    const { token } = await setupRenewalSite();
+    const { readOnlyFrom, token } = await setupRenewalSite();
     const response = await handleRequest(
       mockRequest(`/renew/?t=${encodeURIComponent(token)}`),
     );
-    return { response, token };
+    return { readOnlyFrom, response, token };
   };
 
   describe("GET /renew/", () => {
@@ -109,9 +121,12 @@ describeWithEnv("routes > renewal", { db: true }, () => {
     });
 
     test("shows the current deadline in the page", async () => {
-      const { response } = await visitRenewalPicker();
+      const { readOnlyFrom, response } = await visitRenewalPicker();
       const html = await response.text();
-      expect(html).toContain("Tuesday 1 September 2026");
+      // Read back the deadline the fixture set, in the page's own wording.
+      expect(html).toContain(
+        formatDateLabel(listingDateToCalendarDate(readOnlyFrom)!),
+      );
     });
 
     test("omits the 'current deadline' wording when no deadline is set", async () => {
@@ -316,7 +331,7 @@ describeWithEnv("routes > renewal", { db: true }, () => {
         purchaseOnly: true,
         unitPrice: 0,
       });
-      const { site, token } = await setupRenewalSite();
+      const { readOnlyFrom, site, token } = await setupRenewalSite();
 
       const csrf = extractCsrfToken(
         await (
@@ -343,9 +358,7 @@ describeWithEnv("routes > renewal", { db: true }, () => {
         const updated = (await builtSites.getAll()).find(
           (s) => s.id === site.id,
         )!;
-        expect(updated.readOnlyFrom).toBe(
-          addMonthsIso("2026-09-01T00:00:00Z", 2),
-        );
+        expect(updated.readOnlyFrom).toBe(addMonthsIso(readOnlyFrom, 2));
         const readOnlyCalls = secretStub.calls.filter(
           (c) => c.args[1] === "READ_ONLY_FROM",
         );
