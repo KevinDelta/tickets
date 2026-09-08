@@ -6,6 +6,7 @@
 
 import * as v from "valibot";
 import { ApiQuantitySchema } from "#routes/api/request-schemas.ts";
+import { KernelLocationSchema } from "#shared/kernel-location.ts";
 import { mergeListingFields } from "#shared/listing-fields.ts";
 import { IsoDateSchema } from "#shared/validation/date.ts";
 import { EmailSchema } from "#shared/validation/email.ts";
@@ -181,6 +182,8 @@ export const AdminListingSchema = v.strictObject({
   day_prices: v.record(v.string(), v.number()),
   /** The groups the listing is in, added to every admin response. */
   group_ids: v.array(v.number()),
+  /** Kernel-authored WGS84 evidence, or no location the Kernel vouches for. */
+  kernel_location: v.nullable(KernelLocationSchema),
 });
 
 const NonEmpty = v.pipe(v.string(), v.trim(), v.nonEmpty());
