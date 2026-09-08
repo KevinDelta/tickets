@@ -77,9 +77,9 @@ authored WGS84 `location` evidence (`latitude`, `longitude`,
 coordinates serialize as `location: null`; consumers must keep those rows
 available. Authenticated administrators set coordinates only through
 `kernel_location: { latitude, longitude }` on the listing mutation boundary;
-clients cannot supply `source` or `updatedAt`. This route remains available
-when the isolated fixture service is intentionally not activated as a public
-Chobble site.
+clients cannot supply `source` or `updatedAt`. This route remains available when
+the isolated fixture service is intentionally not activated as a public Chobble
+site.
 
 The fixture reset seeds `tourbook-integration` with a deterministic located
 record and leaves `tourbook-soft-channel` unlocated so Tourbook can prove both
