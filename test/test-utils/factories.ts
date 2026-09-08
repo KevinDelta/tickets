@@ -257,11 +257,9 @@ export const testBuiltSite = (
  * one-group membership) as well as the new `groupIds` array, so existing call
  * sites passing `{ groupId }` keep working while multi-group tests can pass
  * `{ groupIds }`. Membership is written via setListingGroups by the factory. */
-export type TestListingOverrides =
-  & Partial<
-    Omit<ListingInput, "slug" | "slugIndex" | "groupIds">
-  >
-  & { groupId?: number; groupIds?: number[] };
+export type TestListingOverrides = Partial<
+  Omit<ListingInput, "slug" | "slugIndex" | "groupIds">
+> & { groupId?: number; groupIds?: number[] };
 
 /** Resolve the group-id list a test override describes: explicit `groupIds`
  * wins; otherwise a positive `groupId` becomes a single-group list; `groupId: 0`
@@ -270,9 +268,9 @@ export const resolveTestGroupIds = (
   overrides: TestListingOverrides,
 ): number[] =>
   overrides.groupIds ??
-    (overrides.groupId !== undefined && overrides.groupId > 0
-      ? [overrides.groupId]
-      : []);
+  (overrides.groupId !== undefined && overrides.groupId > 0
+    ? [overrides.groupId]
+    : []);
 
 export const testListingInput = (
   overrides: TestListingOverrides = {},

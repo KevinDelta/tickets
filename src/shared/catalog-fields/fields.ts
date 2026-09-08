@@ -4,6 +4,7 @@ import { decrypt, encrypt } from "#crypto/encryption.ts";
 import type { BlindIndex } from "#crypto/sealed.ts";
 import { col } from "#db/table.ts";
 import { VALID_DAY_NAMES } from "#shared/day-names.ts";
+import type { KernelLocation } from "#shared/kernel-location.ts";
 import {
   clampDurationDays,
   type DayPrices,
@@ -12,7 +13,6 @@ import {
   type ListingType,
 } from "#types";
 import type { OptionalCatalogFieldValues } from "./definition.ts";
-import type { KernelLocation } from "#shared/kernel-location.ts";
 
 /* jscpd:ignore-end */
 
@@ -141,15 +141,14 @@ interface CatalogInput {
 
 /** Listing input fields for create/update (camelCase). */
 export interface ListingInput
-  extends
-    CatalogInput,
+  extends CatalogInput,
     Omit<OptionalCatalogFieldValues<typeof listingCatalogFields>, "name"> {
   /** Transient group membership; the group_listings table stores it. */
   groupIds?: number[];
-  maxAttendees: number;
-  maxPrice: number;
   /** Omitted leaves the evidence unchanged; null explicitly removes it. */
   kernelLocation?: KernelLocation | null;
+  maxAttendees: number;
+  maxPrice: number;
 }
 
 export const groupCatalogFields = {
@@ -189,8 +188,7 @@ export interface PackageMemberInput {
 
 /** Group input fields for create/update (camelCase). */
 export interface GroupInput
-  extends
-    CatalogInput,
+  extends CatalogInput,
     Omit<OptionalCatalogFieldValues<typeof groupCatalogFields>, "name"> {
   /** Absent leaves existing package rows untouched; an empty array clears them. */
   packageMembers?: PackageMemberInput[] | undefined;
