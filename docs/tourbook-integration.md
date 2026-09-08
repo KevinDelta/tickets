@@ -71,9 +71,19 @@ curl --fail-with-body \
 
 Discover every active listing through the same authenticated boundary with
 `GET /integration/v1/listings`. Each item reports its stable slug, name,
-capacity, booked quantity, and current available quantity. This route remains
-available when the isolated fixture service is intentionally not activated as a
-public Chobble site.
+capacity, booked quantity, current available quantity, and optional Kernel-
+authored WGS84 `location` evidence (`latitude`, `longitude`,
+`source: "ticketing_kernel"`, server-owned `updatedAt`). Missing or cleared
+coordinates serialize as `location: null`; consumers must keep those rows
+available. Authenticated administrators set coordinates only through
+`kernel_location: { latitude, longitude }` on the listing mutation boundary;
+clients cannot supply `source` or `updatedAt`. This route remains available
+when the isolated fixture service is intentionally not activated as a public
+Chobble site.
+
+The fixture reset seeds `tourbook-integration` with a deterministic located
+record and leaves `tourbook-soft-channel` unlocated so Tourbook can prove both
+catalog states against the digest-pinned image.
 
 Create one exact-quantity booking with a caller-scoped Idempotency Key:
 
