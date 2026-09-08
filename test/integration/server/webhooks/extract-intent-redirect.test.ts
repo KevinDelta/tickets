@@ -220,6 +220,7 @@ describeWithEnv(
       });
 
       const { addMonthsIso } = await import("#shared/dates.ts");
+      const { nowIso } = await import("#shared/now.ts");
       const { getAllListings } = await import("#db/listings/records.ts");
       const { insertBuiltSite, builtSites } = await import(
         "#db/built-sites.ts"
@@ -236,7 +237,9 @@ describeWithEnv(
         (e) => e.name === "Annual multi-tier renewal",
       )!;
 
-      const initialDeadline = "2026-09-01T00:00:00Z";
+      // Still ahead of now, so the renewal stacks onto this deadline rather
+      // than onto today. A fixed date stops testing that once it passes.
+      const initialDeadline = addMonthsIso(nowIso(), 1);
       await insertBuiltSite(
         "Multi Tier Renewal Site",
         "multi-renew.b-cdn.net",
