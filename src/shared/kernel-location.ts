@@ -3,21 +3,14 @@
 import * as v from "valibot";
 import { isInstant } from "#shared/validation/timestamp.ts";
 
-const latitude = v.pipe(
-  v.number(),
-  v.finite(),
-  v.minValue(-90),
-  v.maxValue(90),
-);
-const longitude = v.pipe(
-  v.number(),
-  v.finite(),
-  v.minValue(-180),
-  v.maxValue(180),
-);
+const boundedFinite = (min: number, max: number) =>
+  v.pipe(v.number(), v.finite(), v.minValue(min), v.maxValue(max));
 
 /** Coordinates an authenticated operator may set. Freshness is server-owned. */
-export const KernelLocationInputSchema = v.object({ latitude, longitude });
+export const KernelLocationInputSchema = v.object({
+  latitude: boundedFinite(-90, 90),
+  longitude: boundedFinite(-180, 180),
+});
 export type KernelLocationInput = v.InferOutput<
   typeof KernelLocationInputSchema
 >;

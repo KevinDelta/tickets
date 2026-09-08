@@ -131,6 +131,12 @@ const parseKernelLocation = (
     : errorResult("kernel_location must be valid WGS84 coordinates");
 };
 
+/** Omitted leaves evidence unchanged; null clears it. */
+const optionalKernelLocation = (
+  kernelLocation: KernelLocation | null | undefined,
+): { kernelLocation?: KernelLocation | null } =>
+  kernelLocation === undefined ? {} : { kernelLocation };
+
 /** Validate mapped fields and group ids before building the listing input. */
 const withParsedGroupIds = (
   body: Record<string, unknown>,
@@ -175,7 +181,7 @@ export const bodyToCreateInput = (
       ...projectCatalogFields(listingCatalogFields, "api", body),
       dayPrices: parseDayPrices(body.day_prices),
       groupIds,
-      ...(kernelLocation === undefined ? {} : { kernelLocation }),
+      ...optionalKernelLocation(kernelLocation),
       maxAttendees,
       maxPrice: bodyNumber(body, "max_price", 0),
       name,
@@ -221,7 +227,7 @@ export const bodyToUpdateInput = async (
         groupIds === undefined
           ? await listingGroups.getIds(existing.id)
           : groupIds,
-      ...(kernelLocation === undefined ? {} : { kernelLocation }),
+      ...optionalKernelLocation(kernelLocation),
       maxAttendees,
       maxPrice: bodyNumber(body, "max_price", existing.max_price),
       name: parsedName.value,
